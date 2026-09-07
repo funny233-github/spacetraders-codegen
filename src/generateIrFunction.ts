@@ -20,20 +20,18 @@ export function generateIrFunction(endpoint: Endpoint, spec: OpenApiSpec): IrFun
   // Generate error handling
   const errorHandling = generateErrorHandling(endpoint);
 
-  // Build function definition
+  // Build function definition (without signature and initialization - they will be dynamically generated later)
   const functionDef: any = {
     name: functionName,
-    signature: `async function ${functionName}(
-      http: HttpClient,
-      ${parameters.map(p => `${p.name}: ${p.type}${p.required ? '' : '?'}`).join(', ')}
-    ): Promise<ApiResponse<${returnType}>>`,
     parameters: parameters,
-    returnType: `Promise<ApiResponse<${returnType}>>`,
+    returnType: returnType,
     body: {
-      initialization: generateInitialization(endpoint),
       apiCall: apiCall,
       errorHandling: errorHandling,
-      postProcessing: ['return response.data;']
+      postProcessing: {
+        type: 'simple',
+        dataField: 'data'
+      }
     },
     comment: endpoint.description || endpoint.summary
   };
@@ -142,57 +140,24 @@ function generateApiCall(endpoint: Endpoint): any {
   return apiCall;
 }
 
-function generateErrorHandling(endpoint: Endpoint): string[] {
-  const errorLines: string[] = [];
-
+function generateErrorHandling(endpoint: Endpoint): any {
   // Get all response codes that indicate errors
   const errorResponses = endpoint.responses?.filter((r: any) => r.code >= 400);
+  
   if (errorResponses && errorResponses.length > 0) {
-    for (const response of errorResponses) {
-      const description = response.description || 'Error';
-      errorLines.push(`if (response.status === ${response.code}) {`);
-      errorLines.push(`  throw new ApiError(response, "${description}");`);
-      errorLines.push(`}`);
-    }
+    // Specific error handling for known error codes
+    return {
+      type: 'specific',
+      specificErrors: errorResponses.map(resp => ({
+        code: resp.code,
+        message: resp.description || 'Error'
+      }))
+    };
   } else {
     // Generic error handling for any non-2xx response
-    errorLines.push('if (!response.ok) {');
-    errorLines.push('  throw new ApiError(response, "API request failed");');
-    errorLines.push('}');
+    return {
+      type: 'generic',
+      genericMessage: 'API request failed'
+    };
   }
-
-  return errorLines;
-}
-
-function generateInitialization(endpoint: Endpoint): string[] {
-  const initLines: string[] = [];
-
-  // Check required parameters
-  for (const param of endpoint.parameters || []) {
-    if (param.required && param.in === 'path') {
-      // Path parameters are already in function signature
-    }
-  }
-
-  // Generate request body initialization if needed
-  if (endpoint.requestBodySchema && Object.keys(endpoint.requestBodySchema.properties || {}).length > 0) {
-    initLines.push(`const request = {`);
-    
-    // Add each required property to the request object
-    for (const [name, schema] of Object.entries(endpoint.requestBodySchema.properties)) {
-      if (schema && typeof schema === 'object' && 'type' in schema) {
-        const desc = (schema as any).description || '';
-        initLines.push(`  ${name}: ${name}, // ${desc}`);
-      }
-    }
-    
-    initLines.push('};');
-    
-    // Add validation for required properties
-    for (const name of endpoint.requestBodySchema.required || []) {
-      initLines.push(`if (!request.${name}) { throw new Error("${name} is required"); }`);
-    }
-  }
-
-  return initLines;
 }

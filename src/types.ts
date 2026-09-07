@@ -74,16 +74,30 @@ export interface IrApiCall {
   query?: Record<string, string>;
 }
 
+export interface IrErrorHandling {
+  type: 'generic' | 'specific';
+  genericMessage?: string;
+  specificErrors?: Array<{
+    code: number;
+    message?: string;
+  }>;
+}
+
+export interface IrDataProcessor {
+  type: 'simple' | 'transform' | 'custom';
+  dataField?: string;        // For simple: response.data.xxx
+  transformFunction?: string; // For transform: function name
+  customCode?: string[];      // For custom: inline code
+}
+
 export interface IrFunctionBody {
-  initialization: string[];  // Code lines before API call
-  apiCall: IrApiCall;        // The actual API invocation
-  errorHandling: string[];   // Error handling code
-  postProcessing: string[];  // Code after successful call
+  apiCall: IrApiCall;         // The actual API invocation
+  errorHandling: IrErrorHandling; // Error handling configuration
+  postProcessing: IrDataProcessor; // Data processing after API call
 }
 
 export interface IrFunctionDefinition {
   name: string;
-  signature: string;
   parameters: IrFunctionParameter[];
   returnType: string;
   body: IrFunctionBody;
