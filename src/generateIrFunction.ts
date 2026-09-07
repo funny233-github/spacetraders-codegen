@@ -78,11 +78,19 @@ function extractParameters(endpoint: Endpoint): any[] {
 }
 
 function determineReturnType(endpoint: Endpoint, spec: OpenApiSpec): string {
-  // Find the response type from schemas
+  // Use operationId to derive response type name
+  if (endpoint.operationId) {
+    // Convert operationId to PascalCase
+    const baseName = endpoint.operationId
+      .replace(/-([a-z])/g, (_, char) => char.toUpperCase())
+      .replace(/^([a-z])/g, (m: string) => m.toUpperCase());
+    return `${baseName}Response`;
+  }
+
+  // Extract from schema if no operationId
   const responses = endpoint.responses || [];
   for (const response of responses) {
     if (response.code === 200 && response.schema) {
-      // Return the first property name or 'any'
       return extractResponseTypeName(response.schema);
     }
   }
