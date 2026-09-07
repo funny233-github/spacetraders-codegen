@@ -43,10 +43,10 @@ function resolveRefs(obj: any): any {
     const resolved = { ...obj };
 
     if (obj.$ref) {
-      // Simple resolution: convert ../models/Name.json to #/components/schemas/Name
+      // Simple resolution: convert ../models/Name.json to just the model name
       const refPath = obj.$ref.replace('../models/', '').replace('./', '');
       const modelName = refPath.replace('.json', '');
-      return { '$ref': `#/components/schemas/${modelName}` };
+      return { '$ref': modelName };
     }
 
     for (const key of Object.keys(resolved)) {

@@ -3,7 +3,7 @@ import path from 'path';
 import { mergeSpec } from './mergeSpec';
 import { extractNavigate } from './extractNavigate';
 import { generateTypesJson } from './generateTypesJson';
-import { generateApiJson } from './generateApiJson';
+import { generateFunctionIr } from './generateFunctionIr';
 
 function main() {
   const baseDir = '/workspace/api-docs';
@@ -26,26 +26,26 @@ function main() {
     process.exit(1);
   }
 
-  // Step 3: Generate types.json
-  console.log('Generating types.json...');
-  const typesJson = generateTypesJson(navigateEndpoint, spec);
+  // Step 3: Generate ir-class.json (type definitions)
+  console.log('Generating ir-class.json...');
+  const classJson = generateTypesJson(navigateEndpoint, spec);
   fs.writeFileSync(
-    path.join(outputDir, 'types.json'),
-    JSON.stringify(typesJson, null, 2)
+    path.join(outputDir, 'ir-class.json'),
+    JSON.stringify(classJson, null, 2)
   );
 
-  // Step 4: Generate api.json
-  console.log('Generating api.json...');
-  const apiJson = generateApiJson(navigateEndpoint);
+  // Step 4: Generate ir-function.json (function implementation IR)
+  console.log('Generating ir-function.json...');
+  const functionIr = generateFunctionIr(navigateEndpoint, spec);
   fs.writeFileSync(
-    path.join(outputDir, 'api.json'),
-    JSON.stringify(apiJson, null, 2)
+    path.join(outputDir, 'ir-function.json'),
+    JSON.stringify(functionIr, null, 2)
   );
 
   console.log('✅ Generation complete!');
   console.log(`Output files:`);
-  console.log(`  - ${outputDir}/types.json`);
-  console.log(`  - ${outputDir}/api.json`);
+  console.log(`  - ${outputDir}/ir-class.json`);
+  console.log(`  - ${outputDir}/ir-function.json`);
 }
 
 main();
