@@ -62,6 +62,8 @@ function buildEndpoint(path: string, method: string, op: any): Endpoint {
     method: method,
     summary: summary,
     description: op.description || '',
+    tags: op.tags,
+    operationId: op.operationId,
     parameters: op.parameters?.map((p: any) => ({
       name: p.name,
       in: p.in,

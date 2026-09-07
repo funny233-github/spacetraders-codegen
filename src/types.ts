@@ -11,7 +11,9 @@ export interface Endpoint {
   method: string;
   summary: string;
   description: string;
-  endpointName: string;
+  endpointName: string; // From tags[0]
+  tags?: string[];      // Original tags array
+  operationId?: string; // Optional operation ID
   parameters?: Array<{
     name: string;
     in: string;
@@ -98,6 +100,7 @@ export interface IrFunctionBody {
 
 export interface IrFunctionDefinition {
   name: string;
+  tag: string;          // Tag/group this function belongs to
   parameters: IrFunctionParameter[];
   returnType: string;
   body: IrFunctionBody;

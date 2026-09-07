@@ -5,6 +5,7 @@ import { extractEndpoint } from './extractEndpoint';
 import { generateIrClass } from './generateIrClass';
 import { generateIrFunction } from './generateIrFunction';
 import { generateTypesFromIR } from './generateTypesFromIR';
+import { generateFunctionsFromIR } from './generateFunctionsFromIR';
 
 function main() {
   // Use relative path for API docs location
@@ -58,11 +59,20 @@ function main() {
     apiOutputDir
   );
 
+  // Step 6: Generate TypeScript functions from IR
+  console.log('Generating TypeScript functions...');
+  generateFunctionsFromIR(
+    path.join(outputDir, 'ir-function.json'),
+    apiOutputDir
+  );
+
   console.log('✅ Generation complete!');
   console.log(`Output files:`);
   console.log(`  - ${process.cwd()}/${outputDir}/ir-class.json`);
   console.log(`  - ${process.cwd()}/${outputDir}/ir-function.json`);
   console.log(`  - ${process.cwd()}/${apiOutputDir}/types.ts`);
+  // Note: Functions are now organized by tags in subdirectories
+  console.log(`  - ${process.cwd()}/${apiOutputDir}/<tag>/<functionName>.ts`);
 }
 
 main();

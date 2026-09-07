@@ -20,9 +20,13 @@ export function generateIrFunction(endpoint: Endpoint, spec: OpenApiSpec): IrFun
   // Generate error handling
   const errorHandling = generateErrorHandling(endpoint);
 
-  // Build function definition (without signature and initialization - they will be dynamically generated later)
+  // Determine tag from endpoint (use tags[0] or fallback to endpointName)
+  const tag = endpoint.tags?.[0] || endpoint.endpointName || 'default';
+
+  // Build function definition
   const functionDef: any = {
     name: functionName,
+    tag: tag,
     parameters: parameters,
     returnType: returnType,
     body: {
@@ -100,9 +104,20 @@ function extractResponseTypeName(schema: any): string {
 }
 
 function generateFunctionName(endpoint: Endpoint): string {
-  // Use endpointName as base, convert to camelCase
-  const baseName = endpoint.endpointName || 'endpoint';
-  return baseName.charAt(0).toUpperCase() + baseName.slice(1);
+  // Use operationId if available, otherwise use endpointName
+  let baseName = endpoint.endpointName || 'endpoint';
+  
+  // If operationId exists, prefer it (it's more specific)
+  if (endpoint.operationId) {
+    // Convert kebab-case to camelCase
+    baseName = endpoint.operationId
+      .replace(/-([a-z])/g, (_, char) => char.toUpperCase())
+      .replace(/^([A-Z])/g, (m: string) => m.toLowerCase());
+  } else {
+    baseName = baseName.charAt(0).toUpperCase() + baseName.slice(1);
+  }
+
+  return baseName;
 }
 
 function generateApiCall(endpoint: Endpoint): any {
