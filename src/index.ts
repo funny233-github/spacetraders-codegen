@@ -4,6 +4,7 @@ import { mergeSpec } from './mergeSpec';
 import { extractEndpoint } from './extractEndpoint';
 import { generateIrClass } from './generateIrClass';
 import { generateIrFunction } from './generateIrFunction';
+import { generateTypesFromIR } from './generateTypesFromIR';
 
 function main() {
   // Use relative path for API docs location
@@ -49,10 +50,19 @@ function main() {
     JSON.stringify(functionIr, null, 2)
   );
 
+  // Step 5: Generate TypeScript types from IR
+  console.log('Generating TypeScript types...');
+  const apiOutputDir = path.join(outputDir, 'spacetraders-api');
+  generateTypesFromIR(
+    path.join(outputDir, 'ir-class.json'),
+    apiOutputDir
+  );
+
   console.log('✅ Generation complete!');
   console.log(`Output files:`);
   console.log(`  - ${process.cwd()}/${outputDir}/ir-class.json`);
   console.log(`  - ${process.cwd()}/${outputDir}/ir-function.json`);
+  console.log(`  - ${process.cwd()}/${apiOutputDir}/types.ts`);
 }
 
 main();
