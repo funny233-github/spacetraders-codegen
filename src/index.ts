@@ -6,12 +6,19 @@ import { generateTypesJson } from './generateTypesJson';
 import { generateFunctionIr } from './generateFunctionIr';
 
 function main() {
-  const baseDir = '/workspace/api-docs';
-  const outputDir = '/workspace/spacetraders-codegen/output';
+  // Use relative path for API docs location (assumes api-docs is a submodule)
+  const baseDir = path.resolve(__dirname, '../../api-docs');
+  // Use relative path for output directory
+  const outputDir = './target';
 
   // Ensure output directory exists
-  if (!fs.existsSync(outputDir)) {
-    fs.mkdirSync(outputDir, { recursive: true });
+  try {
+    if (!fs.existsSync(outputDir)) {
+      fs.mkdirSync(outputDir, { recursive: true });
+    }
+  } catch (error: any) {
+    console.error('Warning: Could not create output directory:', error.message);
+    process.exit(1);
   }
 
   // Step 1: Merge spec with all models
@@ -44,8 +51,8 @@ function main() {
 
   console.log('✅ Generation complete!');
   console.log(`Output files:`);
-  console.log(`  - ${outputDir}/ir-class.json`);
-  console.log(`  - ${outputDir}/ir-function.json`);
+  console.log(`  - ${process.cwd()}/${outputDir}/ir-class.json`);
+  console.log(`  - ${process.cwd()}/${outputDir}/ir-function.json`);
 }
 
 main();

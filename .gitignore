@@ -1,4 +1,12 @@
+# Dependencies
 node_modules/
+
+# Build output
 dist/
-output/*.json
+target/
+
+# Git submodules (optional - uncomment if needed)
+# !api-docs/
+
+# Keep this file
 !.gitignore
