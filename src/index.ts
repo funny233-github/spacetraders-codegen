@@ -1,13 +1,13 @@
 import fs from 'fs';
 import path from 'path';
 import { mergeSpec } from './mergeSpec';
-import { extractNavigate } from './extractNavigate';
-import { generateTypesJson } from './generateTypesJson';
-import { generateFunctionIr } from './generateFunctionIr';
+import { extractEndpoint } from './extractEndpoint';
+import { generateIrClass } from './generateIrClass';
+import { generateIrFunction } from './generateIrFunction';
 
 function main() {
-  // Use relative path for API docs location (assumes api-docs is a submodule)
-  const baseDir = path.resolve(__dirname, '../../api-docs');
+  // Use relative path for API docs location
+  const baseDir = path.resolve('./api-docs');
   // Use relative path for output directory
   const outputDir = './target';
 
@@ -25,9 +25,9 @@ function main() {
   console.log('Merging spec and models...');
   const spec = mergeSpec(baseDir);
 
-  // Step 2: Extract navigate endpoint
+  // Step 2: Extract navigate endpoint (generic extraction)
   console.log('Extracting navigate endpoint...');
-  const navigateEndpoint = extractNavigate(spec);
+  const navigateEndpoint = extractEndpoint(spec, '/my/ships/{shipSymbol}/navigate', 'post');
   if (!navigateEndpoint) {
     console.error('ERROR: Could not find navigate endpoint in spec');
     process.exit(1);
@@ -35,7 +35,7 @@ function main() {
 
   // Step 3: Generate ir-class.json (type definitions)
   console.log('Generating ir-class.json...');
-  const classJson = generateTypesJson(navigateEndpoint, spec);
+  const classJson = generateIrClass(navigateEndpoint, spec);
   fs.writeFileSync(
     path.join(outputDir, 'ir-class.json'),
     JSON.stringify(classJson, null, 2)
@@ -43,7 +43,7 @@ function main() {
 
   // Step 4: Generate ir-function.json (function implementation IR)
   console.log('Generating ir-function.json...');
-  const functionIr = generateFunctionIr(navigateEndpoint, spec);
+  const functionIr = generateIrFunction(navigateEndpoint, spec);
   fs.writeFileSync(
     path.join(outputDir, 'ir-function.json'),
     JSON.stringify(functionIr, null, 2)

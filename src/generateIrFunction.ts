@@ -1,44 +1,9 @@
-import { NavigateEndpoint, OpenApiSpec } from './types';
-
-// Function IR Definition for code generation
-export interface IrFunctionParameter {
-  name: string;
-  type: string;
-  required: boolean;
-  comment?: string;
-}
-
-export interface IrApiCall {
-  method: 'GET' | 'POST' | 'PUT' | 'DELETE';
-  path: string;
-  params: Record<string, string>;
-  body?: string;
-  query: Record<string, string>;
-}
-
-export interface IrFunctionBody {
-  initialization: string[];  // Code lines before API call
-  apiCall: IrApiCall;        // The actual API invocation
-  errorHandling: string[];   // Error handling code
-  postProcessing: string[];  // Code after successful call
-}
-
-export interface IrFunctionDefinition {
-  name: string;
-  signature: string;
-  parameters: IrFunctionParameter[];
-  returnType: string;
-  body: IrFunctionBody;
-  comment?: string;
-}
-
-export interface IrFunctionJson {
-  functions: IrFunctionDefinition[];
-}
+import { Endpoint } from './types';
+import { OpenApiSpec, IrFunctionJson } from './types';
 
 // Generate function IR dynamically from endpoint and spec
-export function generateFunctionIr(endpoint: NavigateEndpoint, spec: OpenApiSpec): IrFunctionJson {
-  const functions: IrFunctionDefinition[] = [];
+export function generateIrFunction(endpoint: Endpoint, spec: OpenApiSpec): IrFunctionJson {
+  const functions: any[] = [];
 
   // Extract parameters from path and query
   const parameters = extractParameters(endpoint);
@@ -56,7 +21,7 @@ export function generateFunctionIr(endpoint: NavigateEndpoint, spec: OpenApiSpec
   const errorHandling = generateErrorHandling(endpoint);
 
   // Build function definition
-  const functionDef: IrFunctionDefinition = {
+  const functionDef: any = {
     name: functionName,
     signature: `async function ${functionName}(
       http: HttpClient,
@@ -78,8 +43,8 @@ export function generateFunctionIr(endpoint: NavigateEndpoint, spec: OpenApiSpec
   return { functions };
 }
 
-function extractParameters(endpoint: NavigateEndpoint): IrFunctionParameter[] {
-  const params: IrFunctionParameter[] = [];
+function extractParameters(endpoint: Endpoint): any[] {
+  const params: any[] = [];
 
   // Extract path parameters
   for (const param of endpoint.parameters || []) {
@@ -110,7 +75,7 @@ function extractParameters(endpoint: NavigateEndpoint): IrFunctionParameter[] {
   return params;
 }
 
-function determineReturnType(endpoint: NavigateEndpoint, spec: OpenApiSpec): string {
+function determineReturnType(endpoint: Endpoint, spec: OpenApiSpec): string {
   // Find the response type from schemas
   const responses = endpoint.responses || [];
   for (const response of responses) {
@@ -128,7 +93,7 @@ function extractResponseTypeName(schema: any): string {
   // Look for a data property in the response
   const dataSchema = schema.properties?.data;
   if (dataSchema && dataSchema.type === 'object') {
-    // Return the first property name or 'NavigateResponse'
+    // Return the first property name or 'data'
     const firstProp = Object.keys(dataSchema.properties || {})[0] || 'data';
     return `Data${firstProp.charAt(0).toUpperCase() + firstProp.slice(1)}`;
   }
@@ -136,14 +101,14 @@ function extractResponseTypeName(schema: any): string {
   return 'any';
 }
 
-function generateFunctionName(endpoint: NavigateEndpoint): string {
+function generateFunctionName(endpoint: Endpoint): string {
   // Use endpointName as base, convert to camelCase
-  const baseName = endpoint.endpointName || 'navigate';
+  const baseName = endpoint.endpointName || 'endpoint';
   return baseName.charAt(0).toUpperCase() + baseName.slice(1);
 }
 
-function generateApiCall(endpoint: NavigateEndpoint): IrApiCall {
-  const apiCall: IrApiCall = {
+function generateApiCall(endpoint: Endpoint): any {
+  const apiCall: any = {
     method: endpoint.method.toUpperCase() as 'GET' | 'POST' | 'PUT' | 'DELETE',
     path: endpoint.path,
     params: {},
@@ -177,7 +142,7 @@ function generateApiCall(endpoint: NavigateEndpoint): IrApiCall {
   return apiCall;
 }
 
-function generateErrorHandling(endpoint: NavigateEndpoint): string[] {
+function generateErrorHandling(endpoint: Endpoint): string[] {
   const errorLines: string[] = [];
 
   // Get all response codes that indicate errors
@@ -199,7 +164,7 @@ function generateErrorHandling(endpoint: NavigateEndpoint): string[] {
   return errorLines;
 }
 
-function generateInitialization(endpoint: NavigateEndpoint): string[] {
+function generateInitialization(endpoint: Endpoint): string[] {
   const initLines: string[] = [];
 
   // Check required parameters

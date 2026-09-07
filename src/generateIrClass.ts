@@ -1,42 +1,12 @@
-import { NavigateEndpoint } from './types';
-import { OpenApiSpec } from './types';
+import { Endpoint } from './types';
+import { OpenApiSpec, IrClassJson } from './types';
 
-// IR Class Definition for code generation
-export interface IrClassDefinition {
-  name: string;
-  kind: 'interface' | 'enum' | 'typeAlias' | 'class';
-  comment?: string;
-  fields?: IrField[];
-  members?: IrEnumMember[];
-  generics?: string[];
-  extends?: string[];
-  default?: any;
-  typeSchema?: any; // For typeAlias, keep the original schema
-}
-
-export interface IrField {
-  name: string;
-  type: string;
-  required: boolean;
-  comment?: string;
-  default?: any;
-}
-
-export interface IrEnumMember {
-  name: string;
-  value?: any;
-}
-
-export interface IrClassJson {
-  classes: IrClassDefinition[];
-}
-
-export function generateTypesJson(endpoint: NavigateEndpoint, spec: OpenApiSpec): IrClassJson {
-  const classes: IrClassDefinition[] = [];
+export function generateIrClass(endpoint: Endpoint, spec: OpenApiSpec): IrClassJson {
+  const classes: any[] = [];
   const components = spec.components || {};
   const schemas = components.schemas || {};
 
-  // Collect all needed types
+  // Collect all needed types from request and response
   const neededTypes = collectNeededTypes(endpoint.requestBodySchema, endpoint.responseSchema);
 
   // Process each schema
@@ -52,11 +22,11 @@ export function generateTypesJson(endpoint: NavigateEndpoint, spec: OpenApiSpec)
   return { classes };
 }
 
-function convertSchemaToIrClass(name: string, schema: any): IrClassDefinition | null {
+function convertSchemaToIrClass(name: string, schema: any): any | null {
   // Determine kind based on schema structure
   const kind = determineClassKind(schema);
 
-  const classDef: IrClassDefinition = {
+  const classDef: any = {
     name: name,
     kind: kind,
     comment: schema.description || undefined,
@@ -90,8 +60,8 @@ function determineClassKind(schema: any): 'interface' | 'enum' | 'typeAlias' | '
   return 'interface';
 }
 
-function convertFields(properties: any, required: string[] | undefined): IrField[] {
-  const fields: IrField[] = [];
+function convertFields(properties: any, required: string[] | undefined): any[] {
+  const fields: any[] = [];
 
   if (!properties || typeof properties !== 'object') return fields;
 
@@ -123,7 +93,7 @@ function convertFields(properties: any, required: string[] | undefined): IrField
   return fields;
 }
 
-function convertEnumMembers(enumValues: any[]): IrEnumMember[] {
+function convertEnumMembers(enumValues: any[]): any[] {
   return enumValues.map((value, index) => ({
     name: `VALUE_${index}`, // Simplified naming
     value: value,
@@ -133,22 +103,22 @@ function convertEnumMembers(enumValues: any[]): IrEnumMember[] {
 function collectNeededTypes(requestSchema: any, responseSchema: any): Set<string> {
   const needed = new Set<string>();
 
-  function extractRefs(obj: any) {
+  function extractRefs(obj: any, depth = 0) {
     if (!obj || typeof obj !== 'object') return;
     if (obj.$ref && typeof obj.$ref === 'string') {
-      // $ref now contains just the model name
       needed.add(obj.$ref);
     }
     for (const key of Object.keys(obj)) {
-      extractRefs(obj[key]);
+      extractRefs(obj[key], depth + 1);
     }
   }
 
   if (requestSchema) extractRefs(requestSchema);
   if (responseSchema) extractRefs(responseSchema);
 
-  // Also include response envelope type
-  needed.add('NavigateApiResponse');
+  // Note: We no longer hardcode "NavigateApiResponse" - this will need to be
+  // handled based on the endpoint's response structure. For now, we rely on
+  // the schemas referenced in the responseSchema itself.
 
   return needed;
 }
