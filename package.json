@@ -1,0 +1,13 @@
+{
+  "name": "spacetraders-codegen",
+  "version": "0.1.0",
+  "description": "Generate intermediate JSON files for SpaceTraders API code generation",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "generate": "node dist/index.js"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.0",
+    "@types/node": "^24.0.0"
+  }
+}
