@@ -1,31 +1,130 @@
-import { OpenApiSpec, Endpoint } from './types';
+import fs from 'fs';
+import path from 'path';
+import { OpenApiSpec } from './mergeSpec';
 
-/**
- * Extract a single endpoint from the spec
- */
-export function extractEndpoint(spec: OpenApiSpec, path: string, method: 'get' | 'post' | 'put' | 'delete' = 'post'): Endpoint | null {
-  const paths = spec.paths || {};
-  const pathItem = paths[path];
-  if (!pathItem) return null;
+// Endpoint representation for a single API operation
+interface EndpointParameter {
+  name: string;
+  in: string;
+  required?: boolean;
+  schema?: unknown;
+  description?: string;
+}
 
-  const op = pathItem[method as keyof typeof pathItem];
-  if (!op) return null;
+interface EndpointResponse {
+  code: number;
+  description?: string;
+  schema?: unknown;
+}
 
-  return buildEndpoint(path, method, op);
+export interface Endpoint {
+  path: string;
+  method: string;
+  summary: string;
+  description: string;
+  endpointName: string; // From tags[0]
+  tags?: string[];      // Original tags array
+  operationId?: string; // Optional operation ID
+  parameters?: EndpointParameter[];
+  requestBodySchema?: unknown;
+  responseSchema?: unknown;
+  responses?: EndpointResponse[];
 }
 
 /**
- * Extract all endpoints from the spec
+ * Build an endpoint object from OpenAPI spec data
  */
-export function extractAllEndpoints(spec: OpenApiSpec): Endpoint[] {
-  const paths = spec.paths || {};
+export function buildEndpoint(
+  path: string,
+  method: string,
+  operation: any,
+  tags: string[],
+  operationId?: string
+): Endpoint {
+  const endpoint: Endpoint = {
+    path,
+    method,
+    summary: operation.summary || '',
+    description: operation.description || '',
+    endpointName: tags[0] || 'default',
+    tags: tags,
+    operationId: operationId,
+    parameters: operation.parameters?.map((param: any) => ({
+      name: param.name,
+      in: param.in,
+      required: param.required,
+      schema: param.schema,
+      description: param.description,
+    })),
+    requestBodySchema: operation.requestBody?.content?.['application/json']?.schema || null,
+    responseSchema: extractResponseSchema(operation.responses),
+    responses: operation.responses
+      ? Object.entries(operation.responses).map(([code, resp]: [string, any]) => ({
+          code: parseInt(code),
+          description: resp.description,
+          schema: resp.content?.['application/json']?.schema || null,
+        }))
+      : undefined,
+  };
+
+  return endpoint;
+}
+
+/**
+ * Extract response schema from responses object
+ */
+function extractResponseSchema(responses: any): unknown {
+  if (!responses) return null;
+
+  // Look for 200 or 201 response with JSON schema
+  const successCodes = ['200', '201'];
+  for (const code of successCodes) {
+    if (responses[code]) {
+      const resp = responses[code];
+      if (resp.content?.['application/json']?.schema) {
+        return resp.content['application/json'].schema;
+      }
+    }
+  }
+
+  // Fallback: return first available schema
+  for (const resp of Object.values(responses)) {
+    if (resp && typeof resp === 'object' && 'content' in resp) {
+      const content = (resp as any).content;
+      if (content?.['application/json']?.schema) {
+        return content['application/json'].schema;
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Extract all endpoints from OpenAPI spec
+ */
+export function extractEndpoints(spec: OpenApiSpec): Endpoint[] {
   const endpoints: Endpoint[] = [];
+  const paths = spec.paths || {};
 
   for (const [path, pathItem] of Object.entries(paths)) {
-    for (const method of ['get', 'post', 'put', 'delete'] as const) {
-      const op = pathItem[method as keyof typeof pathItem];
-      if (op) {
-        endpoints.push(buildEndpoint(path, method, op));
+    if (!pathItem || typeof pathItem !== 'object') continue;
+
+    // Process each HTTP method
+    for (const method of ['get', 'post', 'put', 'delete', 'patch']) {
+      const operation = (pathItem as any)[method];
+      if (!operation || typeof operation !== 'object') continue;
+
+      // Get tags from operation or path level
+      const tags = operation.tags || [];
+      const operationId = operation.operationId;
+
+      // Build endpoint object
+      const endpoint = buildEndpoint(path, method.toUpperCase(), operation, tags, operationId);
+
+      // Only include if it has a summary or description
+      if (endpoint.summary || endpoint.description) {
+        endpoints.push(endpoint);
       }
     }
   }
@@ -34,50 +133,23 @@ export function extractAllEndpoints(spec: OpenApiSpec): Endpoint[] {
 }
 
 /**
- * Core function to build an Endpoint object
+ * Load OpenAPI spec from file
  */
-function buildEndpoint(path: string, method: string, op: any): Endpoint {
-  // Use tags[0] as primary source for endpointName (namespace grouping)
-  let endpointName: string;
+export function loadSpec(specPath: string): OpenApiSpec {
+  const content = fs.readFileSync(specPath, 'utf-8');
+  return JSON.parse(content);
+}
 
-  if (op.tags && op.tags.length > 0) {
-    endpointName = op.tags[0].toLowerCase().replace(/[^a-z0-9]/gi, '');
-  } else if (op.operationId) {
-    endpointName = op.operationId
-      .replace(/[-_]/g, '')
-      .replace(/^([A-Z])/g, (m: string) => m.toLowerCase());
-  } else {
-    const summary = op.summary || 'Unknown';
-    endpointName = summary
-      .toLowerCase()
-      .replace(/\s+/g, '')
-      .replace(/[^a-z0-9]/gi, '')
-      .replace(/^([A-Z])/g, (m: string) => m.toLowerCase());
-  }
-
-  const summary = op.summary || '';
-
-  return {
-    path: path,
-    method: method,
-    summary: summary,
-    description: op.description || '',
-    tags: op.tags,
-    operationId: op.operationId,
-    parameters: op.parameters?.map((p: any) => ({
-      name: p.name,
-      in: p.in,
-      required: p.required,
-      schema: p.schema,
-      description: p.description
-    })),
-    requestBodySchema: op.requestBody?.content?.['application/json']?.schema,
-    responseSchema: op.responses?.['200']?.content?.['application/json']?.schema,
-    responses: op.responses ? Object.entries(op.responses).map(([code, resp]: [string, any]) => ({
-      code: parseInt(code),
-      description: resp.description,
-      schema: resp.content?.['application/json']?.schema
-    })) : [],
-    endpointName: endpointName,
-  };
+/**
+ * Extract a specific endpoint by path and method
+ */
+export function extractEndpointByPath(
+  spec: OpenApiSpec,
+  path: string,
+  method: string
+): Endpoint | null {
+  const endpoints = extractEndpoints(spec);
+  return endpoints.find(
+    ep => ep.path === path && ep.method === method.toUpperCase()
+  ) || null;
 }

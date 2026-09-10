@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { IrFunctionJson, IrFunctionDefinition } from './types';
+import { IrFunctionJson, IrFunctionDefinition, IrApiCall, IrErrorHandling, IrDataProcessor } from './generateIrFunction';
 
 /**
  * Generate TypeScript function implementations from IR function definitions
@@ -12,17 +12,17 @@ export function generateFunctionsFromIR(irPath: string, outputDir: string): void
   for (const func of irData.functions) {
     // Determine tag from IR definition (use tag field)
     const tag = func.tag || 'default';
-    
+
     // Create tag directory under the outputDir
     const tagDir = path.join(outputDir, tag.toLowerCase());
-    
+
     if (!fs.existsSync(tagDir)) {
       fs.mkdirSync(tagDir, { recursive: true });
     }
 
     // Generate content for this single function
     const content = generateFunctionContent(func);
-    
+
     // Write to file - one file per function
     // Use function name as filename (lowercase)
     const fileName = func.name.toLowerCase() + '.ts';
@@ -133,7 +133,7 @@ function generateFunctionBody(func: IrFunctionDefinition): string {
  */
 function generateRequestBodyCode(func: IrFunctionDefinition): string | null {
   const apiCall = func.body.apiCall;
-  
+
   // Check if we need a request body
   if (!apiCall.body) {
     return null;
@@ -142,7 +142,7 @@ function generateRequestBodyCode(func: IrFunctionDefinition): string | null {
   // Identify which parameters are NOT path/query parameters
   const pathParams = new Set(Object.values(apiCall.params || {}));
   const queryParams = new Set(Object.values(apiCall.query || {}));
-  
+
   const bodyParams: string[] = [];
   for (const param of func.parameters) {
     if (!pathParams.has(param.name) && !queryParams.has(param.name)) {
@@ -167,16 +167,16 @@ function generateRequestBodyCode(func: IrFunctionDefinition): string | null {
 /**
  * Generate TypeScript code for API call
  */
-function generateApiCallCode(apiCall: any): string {
+function generateApiCallCode(apiCall: IrApiCall): string {
   const method = apiCall.method.toLowerCase();
-  
+
   let url = apiCall.path;
   if (apiCall.params && Object.keys(apiCall.params).length > 0) {
     for (const [key, value] of Object.entries(apiCall.params)) {
       url = url.replace(`{${key}}`, `\${${value}}`);
     }
   }
-  
+
   const configLines: string[] = [];
   if (apiCall.body) {
     configLines.push(`body: ${apiCall.body}`);
@@ -193,7 +193,7 @@ function generateApiCallCode(apiCall: any): string {
 /**
  * Generate TypeScript code for error handling
  */
-function generateErrorHandlingCode(errorHandling: any): string {
+function generateErrorHandlingCode(errorHandling: IrErrorHandling): string {
   if (errorHandling.type === 'generic') {
     return `if (!response.ok) {\n  throw new ApiError(response, "${errorHandling.genericMessage}");\n}`;
   } else if (errorHandling.type === 'specific') {
@@ -209,7 +209,7 @@ function generateErrorHandlingCode(errorHandling: any): string {
 /**
  * Generate TypeScript code for post-processing
  */
-function generatePostProcessingCode(processor: any): string {
+function generatePostProcessingCode(processor: IrDataProcessor): string {
   if (processor.type === 'simple') {
     return `return response.${processor.dataField};`;
   } else if (processor.type === 'transform') {

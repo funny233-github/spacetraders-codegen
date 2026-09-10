@@ -1,186 +1,191 @@
-import { Endpoint } from './types';
-import { OpenApiSpec, IrFunctionJson } from './types';
+import { Endpoint } from './extractEndpoint';
 
-// Generate function IR dynamically from endpoint and spec
-export function generateIrFunction(endpoint: Endpoint, spec: OpenApiSpec): IrFunctionJson {
-  const functions: any[] = [];
-
-  // Extract parameters from path and query
-  const parameters = extractParameters(endpoint);
-
-  // Determine return type from response
-  const returnType = determineReturnType(endpoint, spec);
-
-  // Build function name from endpointName or operationId
-  const functionName = generateFunctionName(endpoint);
-
-  // Generate API call details
-  const apiCall = generateApiCall(endpoint);
-
-  // Generate error handling
-  const errorHandling = generateErrorHandling(endpoint);
-
-  // Determine tag from endpoint (use tags[0] or fallback to endpointName)
-  const tag = endpoint.tags?.[0] || endpoint.endpointName || 'default';
-
-  // Build function definition
-  const functionDef: any = {
-    name: functionName,
-    tag: tag,
-    parameters: parameters,
-    returnType: returnType,
-    body: {
-      apiCall: apiCall,
-      errorHandling: errorHandling,
-      postProcessing: {
-        type: 'simple',
-        dataField: 'data'
-      }
-    },
-    comment: endpoint.description || endpoint.summary
-  };
-
-  functions.push(functionDef);
-
-  return { functions };
+// Function parameter for IR
+export interface IrFunctionParameter {
+  name: string;
+  type: string;
+  required: boolean;
+  comment?: string;
 }
 
-function extractParameters(endpoint: Endpoint): any[] {
-  const params: any[] = [];
-
-  // Extract path parameters
-  for (const param of endpoint.parameters || []) {
-    if (param.in === 'path' || param.in === 'query') {
-      params.push({
-        name: param.name,
-        type: (param.schema as any)?.type || 'any',
-        required: param.required ?? false,
-        comment: param.description
-      });
-    }
-  }
-
-  // Extract request body parameters (if any)
-  if (endpoint.requestBodySchema && endpoint.requestBodySchema.properties) {
-    for (const [name, schema] of Object.entries(endpoint.requestBodySchema.properties)) {
-      if (schema && typeof schema === 'object' && 'type' in schema) {
-        params.push({
-          name: name,
-          type: (schema as any).type || 'any',
-          required: endpoint.requestBodySchema.required?.includes(name) ?? false,
-          comment: (schema as any).description
-        });
-      }
-    }
-  }
-
-  return params;
+// API call representation
+export interface IrApiCall {
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE';
+  path: string;
+  params?: Record<string, string>;
+  body?: string;
+  query?: Record<string, string>;
 }
 
-function determineReturnType(endpoint: Endpoint, spec: OpenApiSpec): string {
-  // Use operationId to derive response type name
+// Error handling configuration
+export interface IrErrorHandling {
+  type: 'generic' | 'specific';
+  genericMessage?: string;
+  specificErrors?: Array<{
+    code: number;
+    message?: string;
+  }>;
+}
+
+// Data processor after API call
+export interface IrDataProcessor {
+  type: 'simple' | 'transform' | 'custom';
+  dataField?: string;        // For simple: response.data.xxx
+  transformFunction?: string; // For transform: function name
+  customCode?: string[];      // For custom: inline code
+}
+
+// Function body representation
+export interface IrFunctionBody {
+  apiCall: IrApiCall;         // The actual API invocation
+  errorHandling: IrErrorHandling; // Error handling configuration
+  postProcessing: IrDataProcessor; // Data processing after API call
+}
+
+// IR function definition for code generation
+export interface IrFunctionDefinition {
+  name: string;
+  tag: string;          // Tag/group this function belongs to
+  parameters: IrFunctionParameter[];
+  returnType: string;
+  body: IrFunctionBody;
+  comment?: string;
+}
+
+// IR function JSON structure (output format)
+export interface IrFunctionJson {
+  functions: IrFunctionDefinition[];
+}
+
+/**
+ * Generate IR function definition for an endpoint
+ */
+export function generateIrFunction(endpoint: Endpoint): IrFunctionJson {
+  // Derive function name from operationId or endpointName
+  let functionName: string;
   if (endpoint.operationId) {
-    // Convert operationId to PascalCase
-    const baseName = endpoint.operationId
+    functionName = endpoint.operationId
       .replace(/-([a-z])/g, (_, char) => char.toUpperCase())
-      .replace(/^([a-z])/g, (m: string) => m.toUpperCase());
-    return `${baseName}Response`;
-  }
-
-  // Extract from schema if no operationId
-  const responses = endpoint.responses || [];
-  for (const response of responses) {
-    if (response.code === 200 && response.schema) {
-      return extractResponseTypeName(response.schema);
-    }
-  }
-  return 'any';
-}
-
-function extractResponseTypeName(schema: any): string {
-  if (!schema || !schema.properties) return 'any';
-  
-  // Look for a data property in the response
-  const dataSchema = schema.properties?.data;
-  if (dataSchema && dataSchema.type === 'object') {
-    // Return the first property name or 'data'
-    const firstProp = Object.keys(dataSchema.properties || {})[0] || 'data';
-    return `Data${firstProp.charAt(0).toUpperCase() + firstProp.slice(1)}`;
-  }
-  
-  return 'any';
-}
-
-function generateFunctionName(endpoint: Endpoint): string {
-  // Use operationId if available, otherwise use endpointName
-  let baseName = endpoint.endpointName || 'endpoint';
-  
-  // If operationId exists, prefer it (it's more specific)
-  if (endpoint.operationId) {
-    // Convert kebab-case to camelCase
-    baseName = endpoint.operationId
-      .replace(/-([a-z])/g, (_, char) => char.toUpperCase())
-      .replace(/^([A-Z])/g, (m: string) => m.toLowerCase());
+      .replace(/^([a-z])/g, (m: string) => m.toLowerCase());
   } else {
-    baseName = baseName.charAt(0).toUpperCase() + baseName.slice(1);
+    functionName = endpoint.endpointName;
   }
 
-  return baseName;
-}
+  // Build function parameters from endpoint parameters
+  const parameters: IrFunctionParameter[] = (endpoint.parameters || []).map(param => ({
+    name: param.name,
+    type: param.schema ? inferTypeFromSchema(param.schema) : 'string',
+    required: param.required ?? false,
+    comment: param.description,
+  }));
 
-function generateApiCall(endpoint: Endpoint): any {
-  const apiCall: any = {
-    method: endpoint.method.toUpperCase() as 'GET' | 'POST' | 'PUT' | 'DELETE',
+  // Build API call
+  const apiCall: IrApiCall = {
+    method: endpoint.method as 'GET' | 'POST' | 'PUT' | 'DELETE',
     path: endpoint.path,
-    params: {},
-    body: undefined,
-    query: {}
+    params: {}, // Will be filled by parameter extraction
+    body: endpoint.requestBodySchema ? 'requestBody' : undefined,
   };
 
-  // Extract path parameters (e.g., {shipSymbol} -> shipSymbol)
-  const pathParams: string[] = [];
-  const pathRegex = /\{([^}]+)\}/g;
-  let match;
-  while ((match = pathRegex.exec(endpoint.path)) !== null) {
-    pathParams.push(match[1]);
+  // Build error handling
+  const errorHandling: IrErrorHandling = {
+    type: 'generic',
+    genericMessage: 'API call failed',
+  };
+
+  // Build data processor
+  const postProcessing: IrDataProcessor = {
+    type: 'simple',
+    dataField: 'data', // Assuming response has .data property
+  };
+
+  // Build function body
+  const functionBody: IrFunctionBody = {
+    apiCall,
+    errorHandling,
+    postProcessing,
+  };
+
+  // Determine return type
+  const returnType = endpoint.responseSchema ? inferReturnType(endpoint.responseSchema) : 'void';
+
+  return {
+    functions: [{
+      name: functionName,
+      tag: endpoint.endpointName,
+      parameters,
+      returnType,
+      body: functionBody,
+      comment: endpoint.summary || endpoint.description,
+    }],
+  };
+}
+
+/**
+ * Infer TypeScript type from a schema object
+ */
+function inferTypeFromSchema(schema: unknown): string {
+  if (!schema || typeof schema !== 'object') return 'any';
+
+  // Check for $ref
+  if ('$ref' in schema && typeof schema.$ref === 'string') {
+    const parts = schema.$ref.split('/');
+    return parts[parts.length - 1];
   }
 
-  // Map path parameters to params object
-  for (const param of endpoint.parameters || []) {
-    if (param.in === 'path') {
-      apiCall.params[param.name] = param.name;
-    } else if (param.in === 'query') {
-      apiCall.query[param.name] = param.name;
+  // Check type
+  if ('type' in schema) {
+    switch (schema.type) {
+      case 'string': return 'string';
+      case 'number': return 'number';
+      case 'integer': return 'number';
+      case 'boolean': return 'boolean';
+      case 'array':
+        if ('items' in schema && schema.items) {
+          const itemType = inferTypeFromSchema(schema.items);
+          return `Array<${itemType}>`;
+        }
+        return 'Array<unknown>';
+      case 'object':
+        return 'object';
+      default: return 'any';
     }
   }
 
-  // Determine if we need a body
-  if (endpoint.requestBodySchema && Object.keys(endpoint.requestBodySchema.properties || {}).length > 0) {
-    // Create a request object from body parameters
-    apiCall.body = 'request';
-  }
-
-  return apiCall;
+  return 'any';
 }
 
-function generateErrorHandling(endpoint: Endpoint): any {
-  // Get all response codes that indicate errors
-  const errorResponses = endpoint.responses?.filter((r: any) => r.code >= 400);
-  
-  if (errorResponses && errorResponses.length > 0) {
-    // Specific error handling for known error codes
-    return {
-      type: 'specific',
-      specificErrors: errorResponses.map(resp => ({
-        code: resp.code,
-        message: resp.description || 'Error'
-      }))
-    };
-  } else {
-    // Generic error handling for any non-2xx response
-    return {
-      type: 'generic',
-      genericMessage: 'API request failed'
-    };
+/**
+ * Infer return type from response schema
+ */
+function inferReturnType(responseSchema: unknown): string {
+  if (!responseSchema || typeof responseSchema !== 'object') return 'any';
+
+  // Check for $ref
+  if ('$ref' in responseSchema && typeof responseSchema.$ref === 'string') {
+    const parts = responseSchema.$ref.split('/');
+    return parts[parts.length - 1];
   }
+
+  // Check type
+  if ('type' in responseSchema) {
+    switch (responseSchema.type) {
+      case 'object':
+        // If it has properties, it's an interface
+        if ('properties' in responseSchema && responseSchema.properties) {
+          return 'object';
+        }
+        return 'object';
+      case 'array':
+        if ('items' in responseSchema && responseSchema.items) {
+          const itemType = inferReturnType(responseSchema.items);
+          return `Array<${itemType}>`;
+        }
+        return 'Array<unknown>';
+      default:
+        return inferTypeFromSchema(responseSchema);
+    }
+  }
+
+  return 'any';
 }

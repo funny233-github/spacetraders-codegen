@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { mergeSpec } from './mergeSpec';
-import { extractEndpoint } from './extractEndpoint';
+import { extractEndpointByPath } from './extractEndpoint';
 import { generateIrClass } from './generateIrClass';
 import { generateIrFunction } from './generateIrFunction';
 import { generateTypesFromIR } from './generateTypesFromIR';
@@ -18,8 +18,9 @@ function main() {
     if (!fs.existsSync(outputDir)) {
       fs.mkdirSync(outputDir, { recursive: true });
     }
-  } catch (error: any) {
-    console.error('Warning: Could not create output directory:', error.message);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error('Warning: Could not create output directory:', errorMessage);
     process.exit(1);
   }
 
@@ -27,9 +28,9 @@ function main() {
   console.log('Merging spec and models...');
   const spec = mergeSpec(baseDir);
 
-  // Step 2: Extract navigate endpoint (generic extraction)
+  // Step 2: Extract navigate endpoint by path and method
   console.log('Extracting navigate endpoint...');
-  const navigateEndpoint = extractEndpoint(spec, '/my/ships/{shipSymbol}/navigate', 'post');
+  const navigateEndpoint = extractEndpointByPath(spec, '/my/ships/{shipSymbol}/navigate', 'post');
   if (!navigateEndpoint) {
     console.error('ERROR: Could not find navigate endpoint in spec');
     process.exit(1);
@@ -45,7 +46,7 @@ function main() {
 
   // Step 4: Generate ir-function.json (function implementation IR)
   console.log('Generating ir-function.json...');
-  const functionIr = generateIrFunction(navigateEndpoint, spec);
+  const functionIr = generateIrFunction(navigateEndpoint);
   fs.writeFileSync(
     path.join(outputDir, 'ir-function.json'),
     JSON.stringify(functionIr, null, 2)

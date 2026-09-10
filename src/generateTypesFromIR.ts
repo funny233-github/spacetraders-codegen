@@ -1,13 +1,13 @@
 import fs from 'fs';
 import path from 'path';
-import { IrClassJson, IrClassDefinition } from './types';
+import { IrClassJson, IrClassDefinition, IrField } from './generateIrClass';
 
 /**
- * Generate TypeScript types from IR class definitions
+ * Generate TypeScript types from IR class definitions only
  */
-export function generateTypesFromIR(irPath: string, outputDir: string): void {
+export function generateTypesFromIR(irClassPath: string, outputDir: string): void {
   // Read IR JSON file
-  const irData: IrClassJson = JSON.parse(fs.readFileSync(irPath, 'utf-8'));
+  const irData: IrClassJson = JSON.parse(fs.readFileSync(irClassPath, 'utf-8'));
 
   // Ensure output directory exists
   if (!fs.existsSync(outputDir)) {
@@ -30,7 +30,7 @@ export function generateTypesFromIR(irPath: string, outputDir: string): void {
 function generateTypesContent(classes: IrClassDefinition[]): string {
   const lines: string[] = [];
 
-  // Generate each class
+  // Generate all types
   for (const cls of classes) {
     const typeCode = generateTypeCode(cls);
     lines.push(typeCode);
@@ -60,12 +60,12 @@ function generateTypeCode(cls: IrClassDefinition): string {
   }
 
   // Generate interface
-  if (cls.kind === 'interface') {
-    lines.push(`export interface ${cls.name} {`);
+  if (cls.kind === 'interface' || cls.kind === 'class') {
+    lines.push(`export ${cls.kind === 'class' ? 'class' : 'interface'} ${cls.name} {`);
 
     for (const field of cls.fields || []) {
       const fieldCode = generateFieldCode(field);
-      lines.push(fieldCode);
+      lines.push(`  ${fieldCode}`);
     }
 
     lines.push('}');
@@ -75,9 +75,9 @@ function generateTypeCode(cls: IrClassDefinition): string {
 }
 
 /**
- * Generate TypeScript code for a single field with proper formatting
+ * Generate TypeScript code for a single field
  */
-function generateFieldCode(field: any): string {
+function generateFieldCode(field: IrField): string {
   const lines: string[] = [];
 
   // Add field comment if exists

@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 
-interface OpenApiSpec {
+export interface OpenApiSpec {
   openapi?: string;
   info?: any;
   paths?: Record<string, any>;
