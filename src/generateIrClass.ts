@@ -54,6 +54,12 @@ export interface SchemaLike {
   description?: string;
   required?: string[];
   enum?: string[];
+  minLength?: number;
+  maxLength?: number;
+  pattern?: string;
+  minimum?: number;
+  maximum?: number;
+  format?: string;
 }
 
 // ExtendedSpec for accessing components.schemas
@@ -281,6 +287,10 @@ function determineClassKind(schema: SchemaLike): ClassKind {
   }
   if (schema.type === 'string' && schema.enum) {
     return 'enum';
+  }
+  // Handle primitive scalar types as type aliases
+  if (['string', 'number', 'integer', 'boolean'].includes(schema.type || '')) {
+    return 'typeAlias';
   }
   return 'interface';
 }

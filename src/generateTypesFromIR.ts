@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { IrClassJson, IrClassDefinition, IrField } from './generateIrClass';
+import { IrClassJson, IrClassDefinition, IrField, SchemaLike } from './generateIrClass';
 
 /**
  * Generate TypeScript types from IR class definitions only
@@ -49,7 +49,7 @@ function generateTypesContent(classes: IrClassDefinition[]): string {
 }
 
 /**
- * Generate TypeScript code for a single class/interface
+ * Generate TypeScript code for a single class/interface/enum/typeAlias
  */
 function generateTypeCode(cls: IrClassDefinition): string {
   const lines: string[] = [];
@@ -59,8 +59,21 @@ function generateTypeCode(cls: IrClassDefinition): string {
     lines.push(`/** ${cls.comment} */`);
   }
 
-  // Generate interface
-  if (cls.kind === 'interface' || cls.kind === 'class') {
+  // Generate enum
+  if (cls.kind === 'enum') {
+    lines.push(`export enum ${cls.name} {`);
+    for (const member of cls.members || []) {
+      lines.push(`  ${member.name} = '${member.value}',`);
+    }
+    lines.push('}');
+  }
+  // Generate type alias
+  else if (cls.kind === 'typeAlias') {
+    const baseType = extractBaseType(cls.typeSchema as SchemaLike);
+    lines.push(`export type ${cls.name} = ${baseType};`);
+  }
+  // Generate interface or class
+  else if (cls.kind === 'interface' || cls.kind === 'class') {
     lines.push(`export ${cls.kind === 'class' ? 'class' : 'interface'} ${cls.name} {`);
 
     for (const field of cls.fields || []) {
@@ -72,6 +85,27 @@ function generateTypeCode(cls: IrClassDefinition): string {
   }
 
   return lines.join('\n');
+}
+
+/**
+ * Extract base TypeScript type from schema
+ */
+function extractBaseType(schema: SchemaLike): string {
+  if (schema.type === 'string') {
+    // Add constraints as branded type if needed
+    if (schema.minLength || schema.maxLength || schema.pattern) {
+      return `string & { readonly brand: unique symbol }`;
+    }
+    return 'string';
+  }
+  if (schema.type === 'number' || schema.type === 'integer') {
+    return 'number';
+  }
+  if (schema.type === 'boolean') {
+    return 'boolean';
+  }
+  // Fallback to string
+  return 'string';
 }
 
 /**
@@ -88,12 +122,24 @@ function generateFieldCode(field: IrField): string {
   // Determine required modifier
   const requiredModifier = field.required ? '' : '?';
 
-  // Generate field signature
-  const fieldName = field.name;
-  const fieldType = field.type;
-  const line = `  ${fieldName}${requiredModifier}: ${fieldType}`;
-
-  lines.push(line);
+  // Handle nested inline objects
+  if (field.fields && field.fields.length > 0) {
+    // Generate inline object type
+    const fieldTypes = field.fields.map(f => {
+      const fCode = generateFieldCode(f);
+      // Remove leading spaces for inline type
+      return fCode.replace(/^  /, '');
+    });
+    const inlineType = `{ ${fieldTypes.join('; ')} }`;
+    const line = `  ${field.name}${requiredModifier}: ${inlineType}`;
+    lines.push(line);
+  } else {
+    // Generate field signature
+    const fieldName = field.name;
+    const fieldType = field.type;
+    const line = `  ${fieldName}${requiredModifier}: ${fieldType}`;
+    lines.push(line);
+  }
 
   return lines.join('\n');
 }
