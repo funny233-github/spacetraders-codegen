@@ -8,6 +8,18 @@ import { IrFunctionJson, IrFunctionDefinition, IrApiCall, IrErrorHandling, IrDat
 export function generateFunctionsFromIR(irPath: string, outputDir: string): void {
   const irData: IrFunctionJson = JSON.parse(fs.readFileSync(irPath, 'utf-8'));
 
+  // Copy shared modules (client and errors) to root target directory once
+  const rootDir = outputDir;
+  const sharedDir = path.join(__dirname, '..', 'src', 'shared');
+  for (const fileName of ['client.ts', 'errors.ts']) {
+    const srcPath = path.join(sharedDir, fileName);
+    const destPath = path.join(rootDir, fileName);
+    if (fs.existsSync(srcPath)) {
+      const content = fs.readFileSync(srcPath, 'utf-8');
+      fs.writeFileSync(destPath, content, 'utf-8');
+    }
+  }
+
   // Generate functions for each function definition
   for (const func of irData.functions) {
     // Determine tag from IR definition (use tag field)
@@ -18,17 +30,6 @@ export function generateFunctionsFromIR(irPath: string, outputDir: string): void
 
     if (!fs.existsSync(tagDir)) {
       fs.mkdirSync(tagDir, { recursive: true });
-    }
-
-    // Copy shared modules (client and errors) to tag directory
-    const sharedDir = path.join(__dirname, '..', 'src', 'shared');
-    for (const fileName of ['client.ts', 'errors.ts']) {
-      const srcPath = path.join(sharedDir, fileName);
-      const destPath = path.join(tagDir, fileName);
-      if (fs.existsSync(srcPath)) {
-        const content = fs.readFileSync(srcPath, 'utf-8');
-        fs.writeFileSync(destPath, content, 'utf-8');
-      }
     }
 
     // Generate content for this single function
@@ -52,9 +53,9 @@ export function generateFunctionsFromIR(irPath: string, outputDir: string): void
 function generateFunctionContent(func: IrFunctionDefinition): string {
   const lines: string[] = [];
 
-  // Import statements
-  lines.push('import { HttpClient } from "./client";');
-  lines.push('import { ApiResponse, ApiError } from "./errors";');
+  // Import statements (use relative path from subdirectory)
+  lines.push('import { HttpClient } from "../client";');
+  lines.push('import { ApiResponse, ApiError } from "../errors";');
   lines.push('');
 
   // Add comment if exists
