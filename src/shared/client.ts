@@ -131,9 +131,8 @@ export class HttpClient {
     };
     if (options.body !== undefined && options.body !== null) {
       init.body = JSON.stringify(options.body) as string;
-    } else {
-      init.body = "{}"; // The API rejects an empty string body for POST
     }
+    // Note: For GET requests, body is undefined - the API may reject a body
 
     let res: Response;
     try {
