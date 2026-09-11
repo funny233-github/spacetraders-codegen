@@ -50,6 +50,7 @@ export interface IrFunctionDefinition {
   returnType: string;
   body: IrFunctionBody;
   comment?: string;
+  security?: Array<Record<string, string[]>>; // Security requirements
 }
 
 // IR function JSON structure (output format)
@@ -122,10 +123,6 @@ export function generateIrFunction(endpoint: Endpoint): IrFunctionJson {
   const returnType = endpoint.responseSchema ? inferReturnType(endpoint.responseSchema) : 'void';
 
   const summaryOrDesc = endpoint.summary || endpoint.description;
-  // Add security note to comment if present
-  const securityNote = endpoint.security && endpoint.security.length > 0 
-    ? `\n\n**Security:** Requires one of the following auth schemes: ${endpoint.security.map(s => Object.keys(s).join(' or ')).join(', ')} `
-    : '';
 
   return {
     functions: [{
@@ -134,7 +131,8 @@ export function generateIrFunction(endpoint: Endpoint): IrFunctionJson {
       parameters,
       returnType,
       body: functionBody,
-      comment: summaryOrDesc ? summaryOrDesc + securityNote : undefined,
+      comment: summaryOrDesc,
+      security: endpoint.security,
     }],
   };
 }
