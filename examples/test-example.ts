@@ -29,48 +29,54 @@ class MockHttpClient extends HttpClient {
 }
 
 /**
- * Example: Unit test with mocked API response
+ * Unit test setup (runs when using Jest)
  */
-describe('NavigateShip API', () => {
-  let mockResult: Awaited<ReturnType<typeof navigateShip>>;
-  let http: HttpClient;
+if (typeof describe === 'function') {
+  /**
+   * Example: Unit test with mocked API response
+   */
+  describe('NavigateShip API', () => {
+    let mockResult: Awaited<ReturnType<typeof navigateShip>>;
+    let http: HttpClient;
 
-  beforeEach(() => {
-    // Setup mock to return success
-    mockResult = {
-      nav: { systemSymbol: 'star-hadex' },
-      fuel: { current: 100, capacity: 200 },
-      events: [],
-    };
+    beforeEach(() => {
+      // Setup mock to return success
+      mockResult = {
+        nav: { systemSymbol: 'star-hadex' },
+        fuel: { current: 100, capacity: 200 },
+        events: [],
+      };
 
-    http = new MockHttpClient(mockResult);
-  });
+      http = new MockHttpClient(mockResult);
+    });
 
-  test('should navigate ship successfully', async () => {
-    const result = await navigateShip(http, 'ship-123');
+    test('should navigate ship successfully', async () => {
+      const result = await navigateShip(http, 'ship-123');
 
-    expect(result).toHaveProperty('nav');
-    expect(result).toHaveProperty('fuel');
-    expect(result).toHaveProperty('events');
-  });
+      expect(result).toHaveProperty('nav');
+      expect(result).toHaveProperty('fuel');
+      expect(result).toHaveProperty('events');
+    });
 
-  test('should throw ApiError on API failure', async () => {
-    // Create a mock that throws an error via send
-    const mock: MockHttpClient = new (class extends HttpClient {
-      constructor() {
-        super({ token: 'mock' });
+    test('should throw ApiError on API failure', async () => {
+      // Create a mock that returns an error response
+      class ErrorMock extends HttpClient {
+        constructor() {
+          super({ token: 'mock' });
+        }
+        async send<T>(): Promise<any> {
+          return {
+            ok: false,
+            error: new ApiError(404, null, 'Ship not found'),
+          };
+        }
       }
-      async send<T>(): Promise<any> {
-        return {
-          ok: false,
-          error: new ApiError(404, null, 'Ship not found'),
-        };
-      }
-    })();
 
-    await expect(navigateShip(mock, 'ship-123')).rejects.toThrow(ApiError);
+      const mock = new ErrorMock();
+      await expect(navigateShip(mock, 'ship-123')).rejects.toThrow(ApiError);
+    });
   });
-});
+}
 
 /**
  * Example: Integration test setup (placeholder)

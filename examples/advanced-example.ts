@@ -113,7 +113,7 @@ async function exampleBatchOps(): Promise<void> {
   });
 
   const shipSymbols = ['ship-1', 'ship-2', 'ship-3'];
-  const results: Array<{ ship: string; success: boolean; data?: any }> = [];
+  const results: Array<{ ship: string; success: boolean; data?: any; error?: Error }> = [];
 
   console.log('🚀 Starting batch navigation for 3 ships...\n');
 
