@@ -6,27 +6,24 @@
  */
 
 import { AgentTokenClient } from '../target/spacetraders-api/client';
-import { navigateShip } from '../target/spacetraders-api/fleet/navigateship';
+import { getMyAgent } from '../target/spacetraders-api/agents/getmyagent';
 import { ApiError } from '../target/spacetraders-api/errors';
 
 /**
- * Example: Navigate a ship to a new location
+ * Example: Get agent details (no game state required)
  */
-async function exampleNavigateShip(): Promise<void> {
+async function exampleGetAgent(): Promise<void> {
   // Initialize the AgentTokenClient with your SpaceTraders token
   const http = new AgentTokenClient({
     token: process.env.AGENT_TOKEN,
   });
 
   try {
-    // Call the generated navigate function
+    // Call the generated getMyAgent function
     // Returns data directly, throws ApiError on failure
-    const result = await navigateShip(
-      http,
-      'ship-123'  // Replace with your actual ship symbol
-    );
+    const result = await getMyAgent(http);
 
-    console.log('✅ Navigation successful!');
+    console.log('✅ Agent fetched successfully!');
     console.log('Response:', JSON.stringify(result, null, 2));
   } catch (error) {
     if (error instanceof ApiError) {
@@ -67,7 +64,7 @@ if (require.main === module) {
     process.exit(1);
   }
 
-  exampleNavigateShip()
+  exampleGetAgent()
     .then(() => {
       console.log('\n✅ Example completed successfully!');
     })
@@ -77,4 +74,4 @@ if (require.main === module) {
     });
 }
 
-export { exampleNavigateShip, exampleGetShipDetails };
+export { exampleGetAgent, exampleGetShipDetails };

@@ -28,17 +28,17 @@ function main() {
   console.log('Merging spec and models...');
   const spec = mergeSpec(baseDir);
 
-  // Step 2: Extract navigate endpoint by path and method
-  console.log('Extracting navigate endpoint...');
-  const navigateEndpoint = extractEndpointByPath(spec, '/my/ships/{shipSymbol}/navigate', 'post');
-  if (!navigateEndpoint) {
-    console.error('ERROR: Could not find navigate endpoint in spec');
+  // Step 2: Extract agent endpoint by path and method (no game state required)
+  console.log('Extracting agent endpoint...');
+  const agentEndpoint = extractEndpointByPath(spec, '/my/agent', 'get');
+  if (!agentEndpoint) {
+    console.error('ERROR: Could not find agent endpoint in spec');
     process.exit(1);
   }
 
   // Step 3: Generate ir-class.json (type definitions)
   console.log('Generating ir-class.json...');
-  const classJson = generateIrClass(navigateEndpoint, spec);
+  const classJson = generateIrClass(agentEndpoint, spec);
   fs.writeFileSync(
     path.join(outputDir, 'ir-class.json'),
     JSON.stringify(classJson, null, 2)
@@ -46,7 +46,7 @@ function main() {
 
   // Step 4: Generate ir-function.json (function implementation IR)
   console.log('Generating ir-function.json...');
-  const functionIr = generateIrFunction(navigateEndpoint);
+  const functionIr = generateIrFunction(agentEndpoint);
   fs.writeFileSync(
     path.join(outputDir, 'ir-function.json'),
     JSON.stringify(functionIr, null, 2)
