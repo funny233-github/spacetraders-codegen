@@ -175,8 +175,9 @@ function generateRequestBodyCode(func: IrFunctionDefinition): string | null {
     }
   }
 
+  // If no body parameters but body is expected, generate empty object
   if (bodyParams.length === 0) {
-    return null;
+    return 'const requestBody: Record<string, never> = {};';
   }
 
   // Generate request object creation
