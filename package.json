@@ -6,13 +6,17 @@
     "build": "tsc -p tsconfig.json",
     "generate": "node dist/index.js",
     "test": "jest",
-    "test:watch": "jest --watch"
+    "test:watch": "jest --watch",
+    "example:basic": "ts-node examples/basic-example.ts",
+    "example:advanced": "ts‑node examples/advanced-example.ts",
+    "example:test": "ts‑node examples/test-example.ts"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",
     "@types/node": "^24.0.0",
     "jest": "^30.5.1",
     "ts-jest": "^29.4.12",
+    "ts-node": "^10.9.2",
     "typescript": "^5.9.0"
   }
 }
