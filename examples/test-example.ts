@@ -17,7 +17,7 @@ class MockHttpClient extends AgentTokenClient {
 
   constructor(mockResp: Awaited<ReturnType<typeof navigateShip>>) {
     super({ token: 'mock-token' });
-    this.mockResult = mockResult;
+    this.mockResult = mockResp;
   }
 
   async send<T>(options: any): Promise<any> {
@@ -37,7 +37,7 @@ if (typeof describe === 'function') {
    */
   describe('NavigateShip API', () => {
     let mockResult: Awaited<ReturnType<typeof navigateShip>>;
-    let http: HttpClient;
+    let http: AgentTokenClient;
 
     beforeEach(() => {
       // Setup mock to return success
@@ -60,7 +60,7 @@ if (typeof describe === 'function') {
 
     test('should throw ApiError on API failure', async () => {
       // Create a mock that returns an error response
-      class ErrorMock extends HttpClient {
+      class ErrorMock extends AgentTokenClient {
         constructor() {
           super({ token: 'mock' });
         }
@@ -82,10 +82,10 @@ if (typeof describe === 'function') {
  * Example: Integration test setup (placeholder)
  */
 class IntegrationTestSuite {
-  private http: HttpClient;
+  private http: AgentTokenClient;
 
   constructor() {
-    this.http = new HttpClient({
+    this.http = new AgentTokenClient({
       token: process.env.TEST_AGENT_TOKEN,
     });
   }
