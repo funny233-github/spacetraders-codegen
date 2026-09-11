@@ -55,7 +55,10 @@ export class HttpClient {
       }
       config.token = env;
     }
-    this.baseUrl = (config.baseUrl ?? "https://api.spacetraders.io/v2").replace(/\/$/, "");
+    this.baseUrl = (config.baseUrl ?? "https://api.spacetraders.io/v2").replace(
+      /\/$/,
+      "",
+    );
     this.fetchImpl = config.fetch ?? fetch;
     this.extraHeaders = config.headers ?? {};
     this.token = config.token;
@@ -65,7 +68,11 @@ export class HttpClient {
    * Build a fully-resolved URL from a path, path parameters, and query
    * parameters.
    */
-  buildUrl(path: string, params?: Record<string, string | number>, query?: RequestOptions["query"]): string {
+  buildUrl(
+    path: string,
+    params?: Record<string, string | number>,
+    query?: RequestOptions["query"],
+  ): string {
     let url = this.baseUrl + this.expandPath(path, params);
     if (query) {
       const qs = new URLSearchParams(
@@ -78,7 +85,10 @@ export class HttpClient {
     return url;
   }
 
-  private expandPath(path: string, params?: Record<string, string | number>): string {
+  private expandPath(
+    path: string,
+    params?: Record<string, string | number>,
+  ): string {
     return path.replace(/\{(\w+)\}/g, (_match, key) => {
       const value = params?.[key];
       if (value === undefined) {
@@ -96,13 +106,17 @@ export class HttpClient {
     const now = Date.now();
     const elapsed = now - this.lastRequestTime;
     if (elapsed < this.minRequestGapMs) {
-      await new Promise((resolve) => setTimeout(resolve, this.minRequestGapMs - elapsed));
+      await new Promise((resolve) =>
+        setTimeout(resolve, this.minRequestGapMs - elapsed),
+      );
     }
     this.lastRequestTime = now;
   }
 
   /** Send a request and return a unified `{ ok, data, error }` shape. */
-  async send<T>(options: RequestOptions & { method?: string }): Promise<ApiResponse<T>> {
+  async send<T>(
+    options: RequestOptions & { method?: string },
+  ): Promise<ApiResponse<T>> {
     await this.respectRateLimit();
     const url = this.buildUrl(options.path, options.params, options.query);
     const method = options.method ?? "POST";
@@ -111,7 +125,7 @@ export class HttpClient {
       headers: {
         "Content-Type": "application/json",
         "User-Agent": "spacetraders-api-demo/0.1.0",
-        "Authorization": `Bearer ${this.token}`,
+        Authorization: `Bearer ${this.token}`,
         ...this.extraHeaders,
       },
     };
@@ -125,7 +139,10 @@ export class HttpClient {
     try {
       res = await this.fetchImpl(url, init);
     } catch (e) {
-      return { ok: false, error: new ApiError(0, null, `Network error: ${(e as Error).message}`) };
+      return {
+        ok: false,
+        error: new ApiError(0, null, `Network error: ${(e as Error).message}`),
+      };
     }
 
     const raw = await res.text();
@@ -133,20 +150,30 @@ export class HttpClient {
 
     if (!res.ok) {
       if (res.status === 429) {
-        const ms = Math.round(parseFloat(res.headers.get("Retry-After") ?? "0") * 1000) + 100;
+        const ms =
+          Math.round(parseFloat(res.headers.get("Retry-After") ?? "0") * 1000) +
+          100;
         return { ok: false, error: new RateLimitError(null, ms) };
       }
-      const message = data?.error?.message ?? data?.message ?? res.statusText ?? "Request failed";
+      const message =
+        data?.error?.message ??
+        data?.message ??
+        res.statusText ??
+        "Request failed";
       return { ok: false, error: new ApiError(res.status, data, message) };
     }
     return { ok: true, data: data as T };
   }
 
-  get<T>(options: RequestOptions & { method?: "GET" }): Promise<ApiResponse<T>> {
+  get<T>(
+    options: RequestOptions & { method?: "GET" },
+  ): Promise<ApiResponse<T>> {
     return this.send<T>({ ...options, method: "GET" });
   }
 
-  post<T>(options: RequestOptions & { method?: "POST" }): Promise<ApiResponse<T>> {
+  post<T>(
+    options: RequestOptions & { method?: "POST" },
+  ): Promise<ApiResponse<T>> {
     return this.send<T>({ ...options, method: "POST" });
   }
 }

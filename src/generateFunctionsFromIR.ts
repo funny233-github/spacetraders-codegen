@@ -133,7 +133,7 @@ function generateFunctionBody(func: IrFunctionDefinition): string {
     lines.push('');
   }
 
-  const apiCallCode = generateApiCallCode(func.body.apiCall);
+  const apiCallCode = generateApiCallCode(func.body.apiCall, func.returnType);
   lines.push(apiCallCode);
 
   const errorHandlingCode = generateErrorHandlingCode(func.body.errorHandling);
@@ -182,29 +182,30 @@ function generateRequestBodyCode(func: IrFunctionDefinition): string | null {
 }
 
 /**
- * Generate TypeScript code for API call
+ * Generate TypeScript code for API call using HttpClient post method
  */
-function generateApiCallCode(apiCall: IrApiCall): string {
-  const method = apiCall.method.toLowerCase();
-
-  let url = apiCall.path;
+function generateApiCallCode(apiCall: IrApiCall, returnType?: string): string {
+  // Build the request object
+  const reqFields: string[] = [`path: '${apiCall.path}'`];
   if (apiCall.params && Object.keys(apiCall.params).length > 0) {
     for (const [key, value] of Object.entries(apiCall.params)) {
-      url = url.replace(`{${key}}`, `\${${value}}`);
+      reqFields.push(`${key}: ${value}`);
     }
   }
-
-  const configLines: string[] = [];
   if (apiCall.body) {
-    configLines.push(`body: ${apiCall.body}`);
+    reqFields.push(`body: ${apiCall.body}`);
   }
 
-  let configStr = '';
-  if (configLines.length > 0) {
-    configStr = `, {\n  ${configLines.join(',\n  ')}\n}`;
-  }
+  const reqObj = `{
+    ${reqFields.join(',\n    ')}
+  }`;
 
-  return `const response = await http.request('${method}', \`${url}\`${configStr});`;
+  // Use http.post for POST/PUT, http.get for GET, etc.
+  if (apiCall.method === 'GET') {
+    return returnType ? `const response = await http.get<${returnType}>(${reqObj});` : `const response = await http.get(${reqObj});`;
+  } else {
+    return returnType ? `const response = await http.post<${returnType}>(${reqObj});` : `const response = await http.post(${reqObj});`;
+  }
 }
 
 /**
