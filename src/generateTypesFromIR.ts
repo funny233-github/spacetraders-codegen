@@ -78,7 +78,7 @@ function generateTypeCode(cls: IrClassDefinition): string {
 
     for (const field of cls.fields || []) {
       const fieldCode = generateFieldCode(field);
-      lines.push(`  ${fieldCode}`);
+      lines.push(fieldCode);
     }
 
     lines.push('}');
@@ -109,35 +109,35 @@ function extractBaseType(schema: SchemaLike): string {
 }
 
 /**
- * Generate TypeScript code for a single field
+ * Generate TypeScript code for a single field with consistent formatting
  */
-function generateFieldCode(field: IrField): string {
+function generateFieldCode(field: IrField, indentLevel: number = 1): string {
+  const indent = '  '.repeat(indentLevel);
   const lines: string[] = [];
-
-  // Add field comment if exists
-  if (field.comment) {
-    lines.push(`  /** ${field.comment} */`);
-  }
 
   // Determine required modifier
   const requiredModifier = field.required ? '' : '?';
 
+  // Add field comment if exists (on its own line before the field)
+  if (field.comment) {
+    lines.push(`${indent}/** ${field.comment} */`);
+  }
+
   // Handle nested inline objects
   if (field.fields && field.fields.length > 0) {
-    // Generate inline object type
+    // Generate inline object type with proper formatting
     const fieldTypes = field.fields.map(f => {
-      const fCode = generateFieldCode(f);
-      // Remove leading spaces for inline type
-      return fCode.replace(/^  /, '');
+      const fCode = generateFieldCode(f, indentLevel + 1);
+      return fCode;
     });
-    const inlineType = `{ ${fieldTypes.join('; ')} }`;
-    const line = `  ${field.name}${requiredModifier}: ${inlineType}`;
+    const inlineBody = fieldTypes.join('\n');
+    const line = `${indent}${field.name}${requiredModifier}: {\n${inlineBody}\n${indent}};`;
     lines.push(line);
   } else {
     // Generate field signature
     const fieldName = field.name;
     const fieldType = field.type;
-    const line = `  ${fieldName}${requiredModifier}: ${fieldType}`;
+    const line = `${indent}${fieldName}${requiredModifier}: ${fieldType};`;
     lines.push(line);
   }
 
