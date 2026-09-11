@@ -53,8 +53,22 @@ export function generateFunctionsFromIR(irPath: string, outputDir: string): void
 function generateFunctionContent(func: IrFunctionDefinition): string {
   const lines: string[] = [];
 
+  // Determine auth scheme and import appropriate client
+  let clientType = 'HttpClient';
+  if (func.security) {
+    for (const scheme of func.security) {
+      if (scheme['AgentToken']) {
+        clientType = 'AgentTokenClient';
+        break;
+      } else if (scheme['AccountToken']) {
+        clientType = 'AccountTokenClient';
+        break;
+      }
+    }
+  }
+
   // Import statements (use relative path from subdirectory)
-  lines.push('import { HttpClient, type ApiResponse } from "../client";');
+  lines.push(`import { ${clientType}, type ApiResponse } from "../client";`);
   lines.push('import { ApiError } from "../errors";');
   lines.push('');
 
@@ -64,7 +78,7 @@ function generateFunctionContent(func: IrFunctionDefinition): string {
   }
 
   // Generate function signature and body
-  const functionCode = generateFunctionCode(func);
+  const functionCode = generateFunctionCode(func, clientType);
   lines.push(functionCode);
 
   return lines.join('\n');
@@ -73,10 +87,10 @@ function generateFunctionContent(func: IrFunctionDefinition): string {
 /**
  * Generate TypeScript code for a single function with proper indentation
  */
-function generateFunctionCode(func: IrFunctionDefinition): string {
+function generateFunctionCode(func: IrFunctionDefinition, clientType: string): string {
   const lines: string[] = [];
 
-  const signature = generateFunctionSignature(func);
+  const signature = generateFunctionSignature(func, clientType);
   lines.push(signature + ' {');  // Add opening brace on same line as signature
 
   const bodyCode = generateFunctionBody(func);
@@ -92,13 +106,13 @@ function generateFunctionCode(func: IrFunctionDefinition): string {
 /**
  * Generate TypeScript function signature with consistent formatting
  */
-function generateFunctionSignature(func: IrFunctionDefinition): string {
+function generateFunctionSignature(func: IrFunctionDefinition, clientType: string): string {
   const funcName = func.name;
   // Return the data directly (not wrapped in ApiResponse) for better API ergonomics
   const returnType = `Promise<${func.returnType}>`;
 
   const params: string[] = [];
-  params.push('http: HttpClient');
+  params.push(`http: ${clientType}`);
 
   for (const param of func.parameters) {
     const optionalModifier = param.required ? '' : '?';

@@ -8,7 +8,7 @@
  * - Response validation
  */
 
-import { HttpClient } from '../target/spacetraders-api/client';
+import { AgentTokenClient } from '../target/spacetraders-api/client';
 import { navigateShip } from '../target/spacetraders-api/fleet/navigateship';
 import { ApiError, RateLimitError } from '../target/spacetraders-api/errors';
 
@@ -25,7 +25,7 @@ interface ExampleConfig {
  * Example with advanced error handling and retry logic
  */
 async function exampleWithRetries(config: ExampleConfig): Promise<void> {
-  const http = new HttpClient({
+  const http = new AgentTokenClient({
     token: process.env.AGENT_TOKEN,
   });
 
@@ -108,7 +108,7 @@ function sleep(ms: number): Promise<void> {
  * Example: Batch operations with multiple ships
  */
 async function exampleBatchOps(): Promise<void> {
-  const http = new HttpClient({
+  const http = new AgentTokenClient({
     token: process.env.AGENT_TOKEN,
   });
 

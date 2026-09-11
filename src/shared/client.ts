@@ -182,3 +182,34 @@ export class HttpClient {
 export type ApiResponse<T> =
   | { ok: true; data: T }
   | { ok: false; error: ApiError };
+
+/**
+ * Client specifically for AgentToken auth scheme.
+ * Enforces usage of AgentToken (AGENT_TOKEN env var or config.token).
+ */
+export class AgentTokenClient extends HttpClient {
+  constructor(config?: SpaceTradersConfig) {
+    if (!config?.token && !process.env.AGENT_TOKEN) {
+      throw new Error(
+        'AgentTokenClient requires AGENT_TOKEN or config.token (AgentToken scheme)'
+      );
+    }
+    super(config ?? {});
+  }
+}
+
+/**
+ * Client specifically for AccountToken auth scheme.
+ * Enforces usage of AccountToken (ACCOUNT_TOKEN env var or config.accountToken).
+ */
+export class AccountTokenClient extends HttpClient {
+  constructor(config?: { accountToken?: string } & Omit<SpaceTradersConfig, 'token'>) {
+    const token = config?.accountToken || process.env.ACCOUNT_TOKEN;
+    if (!token) {
+      throw new Error(
+        'AccountTokenClient requires ACCOUNT_TOKEN or config.accountToken (AccountToken scheme)'
+      );
+    }
+    super({ ...config, token });
+  }
+}

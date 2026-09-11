@@ -5,7 +5,7 @@
  * interact with the SpaceTraders v2 API.
  */
 
-import { HttpClient } from '../target/spacetraders-api/client';
+import { AgentTokenClient } from '../target/spacetraders-api/client';
 import { navigateShip } from '../target/spacetraders-api/fleet/navigateship';
 import { ApiError } from '../target/spacetraders-api/errors';
 
@@ -13,8 +13,8 @@ import { ApiError } from '../target/spacetraders-api/errors';
  * Example: Navigate a ship to a new location
  */
 async function exampleNavigateShip(): Promise<void> {
-  // Initialize the HTTP client with your SpaceTraders token
-  const http = new HttpClient({
+  // Initialize the AgentTokenClient with your SpaceTraders token
+  const http = new AgentTokenClient({
     token: process.env.AGENT_TOKEN,
   });
 
@@ -43,7 +43,7 @@ async function exampleNavigateShip(): Promise<void> {
  * Example: Get ship details (placeholder for future generated function)
  */
 async function exampleGetShipDetails(): Promise<void> {
-  const http = new HttpClient({
+  const http = new AgentTokenClient({
     token: process.env.AGENT_TOKEN,
   });
 
@@ -60,7 +60,7 @@ if (require.main === module) {
   console.log('=== Spacetraders API Example ===\n');
   console.log('This example requires an AGENT_TOKEN environment variable.\n');
 
-  if (!process.env.AGENT_TENOTOKEN) {
+  if (!process.env.AGENT_TOKEN) {
     console.log('Set your token and run again:');
     console.log('  export AGENT_TOKEN="your-token-here"');
     console.log('  npm run example');

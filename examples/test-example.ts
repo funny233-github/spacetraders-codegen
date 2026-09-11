@@ -5,19 +5,19 @@
  * in unit and integration tests with mock dependencies.
  */
 
-import { HttpClient, SpaceTradersConfig } from '../target/spacetraders-api/client';
+import { AgentTokenClient, SpaceTradersConfig } from '../target/spacetraders-api/client';
 import { navigateShip } from '../target/spacetraders-api/fleet/navigateship';
 import { ApiError } from '../target/spacetraders-api/errors';
 
 /**
- * Mock HttpClient for testing (simulates API responses)
+ * Mock Client for testing (simulates API responses)
  */
-class MockHttpClient extends HttpClient {
+class MockHttpClient extends AgentTokenClient {
   private mockResult: Awaited<ReturnType<typeof navigateShip>>;
 
   constructor(mockResp: Awaited<ReturnType<typeof navigateShip>>) {
     super({ token: 'mock-token' });
-    this.mockResult = mockResp;
+    this.mockResult = mockResult;
   }
 
   async send<T>(options: any): Promise<any> {
