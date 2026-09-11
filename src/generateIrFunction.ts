@@ -79,11 +79,23 @@ export function generateIrFunction(endpoint: Endpoint): IrFunctionJson {
     comment: param.description,
   }));
 
+  // Extract path parameters from endpoint (those used in URL paths)
+  const pathParams: Record<string, string> = {};
+  if (endpoint.parameters) {
+    for (const param of endpoint.parameters) {
+      // Path parameters are typically in the URL path definition
+      // If parameter is in the path string, it's a path param
+      if (param.in === 'path' || endpoint.path.includes(`{${param.name}}`)) {
+        pathParams[param.name] = param.name;
+      }
+    }
+  }
+
   // Build API call
   const apiCall: IrApiCall = {
     method: endpoint.method as 'GET' | 'POST' | 'PUT' | 'DELETE',
     path: endpoint.path,
-    params: {}, // Will be filled by parameter extraction
+    params: pathParams,
     body: endpoint.requestBodySchema ? 'requestBody' : undefined,
   };
 

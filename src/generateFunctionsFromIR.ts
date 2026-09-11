@@ -193,26 +193,31 @@ function generateRequestBodyCode(func: IrFunctionDefinition): string | null {
  * Generate TypeScript code for API call using HttpClient post method
  */
 function generateApiCallCode(apiCall: IrApiCall, returnType?: string): string {
-  // Build the request object
-  const reqFields: string[] = [`path: '${apiCall.path}'`];
+  // Build request object as formatted string
+  let req = `{
+    path: '${apiCall.path}'`;
+  
+  // Add path parameters if they exist (for URL substitution)
   if (apiCall.params && Object.keys(apiCall.params).length > 0) {
-    for (const [key, value] of Object.entries(apiCall.params)) {
-      reqFields.push(`${key}: ${value}`);
+    req += `,\n    params: {`;
+    const paramLines: string[] = [];
+    for (const key of Object.keys(apiCall.params)) {
+      paramLines.push(`      ${key}: ${apiCall.params![key]}`);
     }
+    req += `\n${paramLines.join(',\n')}\n    }`;
   }
+  
   if (apiCall.body) {
-    reqFields.push(`body: ${apiCall.body}`);
+    req += `,\n    body: ${apiCall.body}`;
   }
-
-  const reqObj = `{
-    ${reqFields.join(',\n    ')}
-  }`;
+  
+  req += `\n  }`;
 
   // Use http.post for POST/PUT, http.get for GET, etc.
   if (apiCall.method === 'GET') {
-    return returnType ? `const response = await http.get<${returnType}>(${reqObj});` : `const response = await http.get(${reqObj});`;
+    return returnType ? `const response = await http.get<${returnType}>(${req});` : `const response = await http.get(${req});`;
   } else {
-    return returnType ? `const response = await http.post<${returnType}>(${reqObj});` : `const response = await http.post(${reqObj});`;
+    return returnType ? `const response = await http.post<${returnType}>(${req});` : `const response = await http.post(${req});`;
   }
 }
 
