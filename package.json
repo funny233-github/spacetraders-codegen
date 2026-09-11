@@ -6,10 +6,10 @@
     "build": "tsc -p tsconfig.json",
     "generate": "node dist/index.js",
     "test": "jest",
-    "test:watch": "jest --watch",
-    "example:basic": "ts-node examples/basic-example.ts",
-    "example:advanced": "ts‑node examples/advanced-example.ts",
-    "example:test": "ts‑node examples/test-example.ts"
+    "test:watch": "jest -- Watch",
+    "example:basic": "node -r ts-node/register examples/basic-example.ts",
+    "example:advanced": "node -r ts-node/register examples/advanced-example.ts",
+    "example:test": "node -r ts-node/register examples/test-example.ts"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",

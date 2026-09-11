@@ -7,22 +7,24 @@
 
 import { HttpClient, SpaceTradersConfig } from '../target/spacetraders-api/client';
 import { navigateShip } from '../target/spacetraders-api/fleet/navigateship';
-import { ApiResponse, ApiError } from '../target/spacetraders-api/errors';
+import { ApiError } from '../target/spacetraders-api/errors';
 
 /**
  * Mock HttpClient for testing (simulates API responses)
  */
 class MockHttpClient extends HttpClient {
-  private mockResponse: Promise<ApiResponse<object>>;
+  private mockResult: Awaited<ReturnType<typeof navigateShip>>;
 
-  constructor(mockResp: Promise<ApiResponse<object>>) {
-    // Pass a dummy config to parent
+  constructor(mockResp: Awaited<ReturnType<typeof navigateShip>>) {
     super({ token: 'mock-token' });
-    this.mockResponse = mockResp;
+    this.mockResult = mockResp;
   }
 
-  async send<T>(options: any): Promise<ApiResponse<T>> {
-    return this.mockResponse as any;
+  async send<T>(options: any): Promise<any> {
+    return {
+      ok: true,
+      data: this.mockResult,
+    };
   }
 }
 
@@ -30,45 +32,43 @@ class MockHttpClient extends HttpClient {
  * Example: Unit test with mocked API response
  */
 describe('NavigateShip API', () => {
-  let mockResult: ApiResponse<object>;
+  let mockResult: Awaited<ReturnType<typeof navigateShip>>;
   let http: HttpClient;
 
   beforeEach(() => {
     // Setup mock to return success
     mockResult = {
-      ok: true,
-      data: {
-        nav: { systemSymbol: 'star-hadex' },
-        fuel: { current: 100, capacity: 200 },
-        events: [],
-      },
+      nav: { systemSymbol: 'star-hadex' },
+      fuel: { current: 100, capacity: 200 },
+      events: [],
     };
 
-    // Create mock client
-    http = new MockHttpClient(Promise.resolve(mockResult));
+    http = new MockHttpClient(mockResult);
   });
 
   test('should navigate ship successfully', async () => {
     const result = await navigateShip(http, 'ship-123');
 
-    expect(result.ok).toBe(true);
-    expect(result.data).toHaveProperty('nav');
-    expect(result.data).toHaveProperty('fuel');
-    expect(result.data).toHaveProperty('events');
+    expect(result).toHaveProperty('nav');
+    expect(result).toHaveProperty('fuel');
+    expect(result).toHaveProperty('events');
   });
 
-  test('should handle API errors', async () => {
-    const errorResult: ApiResponse<object> = {
-      ok: false,
-      error: new ApiError(404, null, 'Ship not found'),
-    };
+  test('should throw ApiError on API failure', async () => {
+    // Create a mock that throws an error via send
+    const mock: MockHttpClient = new (class extends HttpClient {
+      constructor() {
+        super({ token: 'mock' });
+      }
+      async send<T>(): Promise<any> {
+        return {
+          ok: false,
+          error: new ApiError(404, null, 'Ship not found'),
+        };
+      }
+    })();
 
-    http = new MockHttpClient(Promise.resolve(errorResult));
-
-    const result = await navigateShip(http, 'ship-123');
-
-    expect(result.ok).toBe(false);
-    expect(result.error!.status).toBe(404);
+    await expect(navigateShip(mock, 'ship-123')).rejects.toThrow(ApiError);
   });
 });
 
@@ -86,12 +86,10 @@ class IntegrationTestSuite {
 
   async setup(): Promise<void> {
     console.log('🧪 Setting up integration test environment...');
-    // Setup test ship, system, waypoint here
   }
 
   async teardown(): Promise<void> {
     console.log('🧹 Cleaning up test environment...');
-    // Cleanup resources
   }
 
   async testNavigate(): Promise<void> {
@@ -101,7 +99,7 @@ class IntegrationTestSuite {
         'test-ship-symbol'
       );
 
-      if (result.ok) {
+      if (result) {
         console.log('✅ Integration test passed: Navigate');
       } else {
         console.log('✅ Integration test passed: Error handling');

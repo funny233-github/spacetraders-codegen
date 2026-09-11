@@ -88,15 +88,15 @@ const http = new HttpClient({
 });
 
 try {
+  // Returns data directly, throws ApiError on failure
   const result = await navigateShip(http, 'ship-123');
-  
-  if (result.ok) {
-    console.log('Success:', result.data);
-  } else {
-    console.log('Error:', result.error.message);
-  }
+  console.log('Success:', result);
 } catch (error) {
-  console.log('Exception:', error);
+  if (error instanceof ApiError) {
+    console.log('API Error:', error.status, error.message);
+  } else {
+    console.log('Exception:', error);
+  }
 }
 ```
 
@@ -122,13 +122,15 @@ Each function follows a consistent pattern:
 export async function <functionName>(
   http: HttpClient,
   ...params
-): Promise<ApiResponse<T>>
+): Promise<T>
 ```
+
+Functions return the **data directly** (type `T`) and **throw `ApiError`** on failures, providing clean async/await syntax without manual response checking.
 
 ## Best Practices
 
-1. **Always check `result.ok`** before accessing `result.data`
-2. **Handle `RateLimitError`** separately for retry logic
+1. **Catch errors with try/catch** – Functions throw `ApiError` on failures
+2. **Check error instanceof ApiError** to access status and message
 3. **Use environment variables** for tokens (never hardcode)
 4. **Wrap in try/catch** for network-level errors
 5. **Follow rate limits**: The client auto-throttles, but be mindful

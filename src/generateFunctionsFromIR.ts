@@ -54,8 +54,8 @@ function generateFunctionContent(func: IrFunctionDefinition): string {
   const lines: string[] = [];
 
   // Import statements (use relative path from subdirectory)
-  lines.push('import { HttpClient } from "../client";');
-  lines.push('import { ApiResponse, ApiError } from "../errors";');
+  lines.push('import { HttpClient, type ApiResponse } from "../client";');
+  lines.push('import { ApiError } from "../errors";');
   lines.push('');
 
   // Add comment if exists
@@ -94,7 +94,8 @@ function generateFunctionCode(func: IrFunctionDefinition): string {
  */
 function generateFunctionSignature(func: IrFunctionDefinition): string {
   const funcName = func.name;
-  const returnType = `Promise<ApiResponse<${func.returnType}>>`;
+  // Return the data directly (not wrapped in ApiResponse) for better API ergonomics
+  const returnType = `Promise<${func.returnType}>`;
 
   const params: string[] = [];
   params.push('http: HttpClient');
@@ -140,8 +141,14 @@ function generateFunctionBody(func: IrFunctionDefinition): string {
   const errorHandlingCode = generateErrorHandlingCode(func.body.errorHandling);
   lines.push(errorHandlingCode);
 
-  const postProcessCode = generatePostProcessingCode(func.body.postProcessing);
-  lines.push(postProcessCode);
+  // For now, return response.data for the success case
+  if (func.body.postProcessing) {
+    const postProcessCode = generatePostProcessingCode(func.body.postProcessing);
+    lines.push(postProcessCode);
+  } else {
+    // Return the full response (ApiResponse<T>) to match function signature
+    lines.push('return response;');
+  }
 
   return lines.join('\n');
 }
@@ -214,11 +221,13 @@ function generateApiCallCode(apiCall: IrApiCall, returnType?: string): string {
  */
 function generateErrorHandlingCode(errorHandling: IrErrorHandling): string {
   if (errorHandling.type === 'generic') {
-    return `if (!response.ok) {\n  throw new ApiError(response, "${errorHandling.genericMessage}");\n}`;
+    // Extract status and raw from the error in response
+    return `if (!response.ok) {\n  const err = response.error!;\n  throw new ApiError(err.status, err.raw, "${errorHandling.genericMessage}");\n}`;
   } else if (errorHandling.type === 'specific') {
     const lines: string[] = [];
     for (const err of errorHandling.specificErrors || []) {
-      lines.push(`if (response.status === ${err.code}) {\n  throw new ApiError(response, "${err.message}");\n}`);
+      // Check the original HTTP status via response.error.status
+      lines.push(`if (!response.ok && response.error!.status === ${err.code}) {\n  throw new ApiError(response.error!.status, response.error!.raw, "${err.message}");\n}`);
     }
     return lines.join('\n');
   }

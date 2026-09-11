@@ -37,39 +37,46 @@ async function exampleWithRetries(config: ExampleConfig): Promise<void> {
     try {
       console.log(`\n📍 Attempt ${attempt} of ${maxRetries}...`);
 
-      // Call navigate with proper parameters
+      // Call navigate - returns data directly, throws on error
       const result = await navigateShip(
         http,
         config.shipSymbol
       );
 
-      if (result.ok) {
-        console.log('\n✅ Navigation successful!');
-        displayNavigationResult(result.data);
-        return; // Success, exit function
-      } else {
+      console.log('\n✅ Navigation successful!');
+      displayNavigationResult(result);
+      return; // Success, exit function
+    } catch (error) {
+      lastError = error as Error;
+
+      if (error instanceof ApiError) {
+        console.log(`\n❌ Attempt ${attempt} failed (API):`, error.message);
+
         // Check for retryable errors
-        if (result.error instanceof RateLimitError) {
+        if (error instanceof RateLimitError) {
           console.log(`⏱️  Rate limit exceeded. Waiting before retry...`);
           await sleep(retryDelay * attempt);
           continue;
         }
 
-        // For other errors, don't retry
-        throw new Error(`API error: ${result.error.message}`);
-      }
-    } catch (error) {
-      lastError = error as Error;
-      console.log(`\n❌ Attempt ${attempt} failed:`, error.message);
+        // For other API errors, don't retry
+        return;
+      } else if (error instanceof Error) {
+        console.log(`\n❌ Attempt ${attempt} failed:`, error.message);
+        if (attempt === maxRetries) {
+          break;
+        }
 
-      if (attempt === maxRetries) {
-        break;
+        const waitTime = retryDelay * attempt;
+        console.log(`⏳ Waiting ${waitTime}ms before next attempt...`);
+        await sleep(waitTime);
+      } else {
+        console.log(`\n💥 Attempt ${attempt} had an unexpected error:`);
+        if (attempt === maxRetries) {
+          break;
+        }
+        await sleep(retryDelay * attempt);
       }
-
-      // Wait before retrying
-      const waitTime = retryDelay * attempt;
-      console.log(`⏳ Waiting ${waitTime}ms before next attempt...`);
-      await sleep(waitTime);
     }
   }
 
@@ -113,16 +120,15 @@ async function exampleBatchOps(): Promise<void> {
   for (const ship of shipSymbols) {
     try {
       const result = await navigateShip(http, ship);
-      if (result.ok) {
-        results.push({ ship, success: true, data: result.data });
-        console.log(`✅ ${ship}: Success`);
-      } else {
-        results.push({ ship, success: false, error: result.error });
-        console.log(`❌ ${ship}: ${result.error.message}`);
-      }
+      results.push({ ship, success: true, data: result });
+      console.log(`✅ ${ship}: Success`);
     } catch (error) {
       results.push({ ship, success: false, error: error as Error });
-      console.log(`💥 ${ship}: ${error.message}`);
+      if (error instanceof ApiError) {
+        console.log(`❌ ${ship}: ${error.message}`);
+      } else {
+        console.log(`💥 ${ship}: ${(error as Error).message}`);
+      }
     }
   }
 
@@ -160,7 +166,7 @@ if (require.main === module) {
       console.log('\n✅ Advanced example completed!');
     })
     .catch((err) => {
-      console.error('\n💥 Example failed:', err);
+      console.log('\n💥 Example failed:', err);
       process.exit(1);
     });
 }

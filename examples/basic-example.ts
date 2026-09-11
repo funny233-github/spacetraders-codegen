@@ -7,35 +7,35 @@
 
 import { HttpClient } from '../target/spacetraders-api/client';
 import { navigateShip } from '../target/spacetraders-api/fleet/navigateship';
-import { ApiResponse, ApiError } from '../target/spacetraders-api/errors';
+import { ApiError } from '../target/spacetraders-api/errors';
 
 /**
  * Example: Navigate a ship to a new location
  */
 async function exampleNavigateShip(): Promise<void> {
   // Initialize the HTTP client with your SpaceTraders token
-  // You can set it via config or environment variable AGENT_TOKEN
   const http = new HttpClient({
     token: process.env.AGENT_TOKEN,
   });
 
   try {
     // Call the generated navigate function
-    const result: ApiResponse<object> = await navigateShip(
+    // Returns data directly, throws ApiError on failure
+    const result = await navigateShip(
       http,
       'ship-123'  // Replace with your actual ship symbol
     );
 
-    if (result.ok) {
-      console.log('✅ Navigation successful!');
-      console.log('Response:', JSON.stringify(result.data, null, 2));
-    } else {
-      console.error('❌ Navigation failed:');
-      console.error('Status:', result.error.status);
-      console.error('Message:', result.error.message);
-    }
+    console.log('✅ Navigation successful!');
+    console.log('Response:', JSON.stringify(result, null, 2));
   } catch (error) {
-    console.error('💥 Unexpected error:', error);
+    if (error instanceof ApiError) {
+      console.log('❌ API Error:');
+      console.log('Status:', error.status);
+      console.log('Message:', error.message);
+    } else {
+      console.error('💥 Unexpected error:', error);
+    }
   }
 }
 
@@ -49,11 +49,9 @@ async function exampleGetShipDetails(): Promise<void> {
 
   try {
     // This would use a generated getShipDetails function
-    // Example placeholder:
-    // const result = await getShipDetails(http, 'ship-123');
     console.log('Example: Get ship details (coming soon)');
   } catch (error) {
-    console.error('Error:', error);
+    console.log('Error:', error);
   }
 }
 
@@ -62,7 +60,7 @@ if (require.main === module) {
   console.log('=== Spacetraders API Example ===\n');
   console.log('This example requires an AGENT_TOKEN environment variable.\n');
 
-  if (!process.env.AGENT_TOKEN) {
+  if (!process.env.AGENT_TENOTOKEN) {
     console.log('Set your token and run again:');
     console.log('  export AGENT_TOKEN="your-token-here"');
     console.log('  npm run example');
@@ -74,8 +72,7 @@ if (require.main === module) {
       console.log('\n✅ Example completed successfully!');
     })
     .catch((err) => {
-      console.error('\n💥 Example failed:');
-      console.error(err);
+      console.log('\n💥 Example failed:', err);
       process.exit(1);
     });
 }
