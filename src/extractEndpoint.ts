@@ -29,6 +29,7 @@ export interface Endpoint {
   requestBodySchema?: unknown;
   responseSchema?: unknown;
   responses?: EndpointResponse[];
+  security?: Array<Record<string, string[]>>; // Security requirements for this endpoint
 }
 
 /**
@@ -39,7 +40,8 @@ export function buildEndpoint(
   method: string,
   operation: any,
   tags: string[],
-  operationId?: string
+  operationId?: string,
+  globalSecurity?: Array<Record<string, string[]>>
 ): Endpoint {
   const endpoint: Endpoint = {
     path,
@@ -65,6 +67,7 @@ export function buildEndpoint(
           schema: resp.content?.['application/json']?.schema || null,
         }))
       : undefined,
+    security: operation.security || globalSecurity,
   };
 
   return endpoint;
@@ -106,6 +109,7 @@ function extractResponseSchema(responses: any): unknown {
 export function extractEndpoints(spec: OpenApiSpec): Endpoint[] {
   const endpoints: Endpoint[] = [];
   const paths = spec.paths || {};
+  const globalSecurity = spec.globalSecurity;
 
   for (const [path, pathItem] of Object.entries(paths)) {
     if (!pathItem || typeof pathItem !== 'object') continue;
@@ -120,7 +124,7 @@ export function extractEndpoints(spec: OpenApiSpec): Endpoint[] {
       const operationId = operation.operationId;
 
       // Build endpoint object
-      const endpoint = buildEndpoint(path, method.toUpperCase(), operation, tags, operationId);
+      const endpoint = buildEndpoint(path, method.toUpperCase(), operation, tags, operationId, globalSecurity);
 
       // Only include if it has a summary or description
       if (endpoint.summary || endpoint.description) {

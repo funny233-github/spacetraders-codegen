@@ -6,6 +6,8 @@ export interface OpenApiSpec {
   info?: any;
   paths?: Record<string, any>;
   components?: any;
+  security?: Array<Record<string, string[]>>; // Global security requirements
+  globalSecurity?: Array<Record<string, string[]>>; // Security requirements at spec level
 }
 
 export function mergeSpec(baseDir: string): OpenApiSpec {
@@ -13,6 +15,9 @@ export function mergeSpec(baseDir: string): OpenApiSpec {
   const modelsDir = path.join(baseDir, 'models');
 
   let spec: OpenApiSpec = JSON.parse(fs.readFileSync(specPath, 'utf-8'));
+
+  // Extract global security requirements
+  spec.globalSecurity = spec.security;
 
   // Load all model files and add to components.schemas
   spec.components = spec.components || {};
