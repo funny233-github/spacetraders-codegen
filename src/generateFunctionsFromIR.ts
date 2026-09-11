@@ -59,17 +59,18 @@ function generateFunctionContent(func: IrFunctionDefinition): string {
 }
 
 /**
- * Generate TypeScript code for a single function
+ * Generate TypeScript code for a single function with proper indentation
  */
 function generateFunctionCode(func: IrFunctionDefinition): string {
   const lines: string[] = [];
 
   const signature = generateFunctionSignature(func);
-  lines.push(signature);
-  lines.push('{');
+  lines.push(signature + ' {');  // Add opening brace on same line as signature
 
   const bodyCode = generateFunctionBody(func);
-  lines.push(bodyCode);
+  // Ensure each line in body is indented by 2 spaces
+  const indentedBody = bodyCode.split('\n').map(line => '  ' + line).join('\n');
+  lines.push(indentedBody);
 
   lines.push('}');
 
@@ -77,7 +78,7 @@ function generateFunctionCode(func: IrFunctionDefinition): string {
 }
 
 /**
- * Generate TypeScript function signature
+ * Generate TypeScript function signature with consistent formatting
  */
 function generateFunctionSignature(func: IrFunctionDefinition): string {
   const funcName = func.name;
@@ -91,17 +92,18 @@ function generateFunctionSignature(func: IrFunctionDefinition): string {
     params.push(`${param.name}${optionalModifier}: ${param.type}`);
   }
 
-  let signature = `export async function ${funcName}(`;
-  if (params.length > 1) {
-    signature += '\n  ';
-    signature += params.join(',\n  ');
-    signature += '\n';
-    signature += `): ${returnType}`;
+  if (params.length === 1) {
+    return `export async function ${funcName}(${params[0]}): ${returnType}`;
   } else {
-    signature += params.join(', ') + `): ${returnType}`;
+    // Multi-line formatting with consistent indentation
+    let signature = `export async function ${funcName}(`;
+    for (const param of params) {
+      signature += `\n  ${param},`;
+    }
+    signature = signature.slice(0, -1); // Remove trailing comma
+    signature += `\n): ${returnType}`;
+    return signature;
   }
-
-  return signature;
 }
 
 /**
@@ -114,6 +116,10 @@ function generateFunctionBody(func: IrFunctionDefinition): string {
   const requestCode = generateRequestBodyCode(func);
   if (requestCode) {
     lines.push(requestCode);
+  }
+  // Add blank line after request body for readability
+  if (requestCode) {
+    lines.push('');
   }
 
   const apiCallCode = generateApiCallCode(func.body.apiCall);
@@ -155,7 +161,7 @@ function generateRequestBodyCode(func: IrFunctionDefinition): string | null {
   }
 
   // Generate request object creation
-  const lines: string[] = [`const request = {`];
+  const lines: string[] = [`const requestBody = {`];
   for (const name of bodyParams) {
     lines.push(`  ${name}: ${name},`);
   }
@@ -184,7 +190,7 @@ function generateApiCallCode(apiCall: IrApiCall): string {
 
   let configStr = '';
   if (configLines.length > 0) {
-    configStr = `, {\n      ${configLines.join(',\n      ')}\n    }`;
+    configStr = `, {\n  ${configLines.join(',\n  ')}\n}`;
   }
 
   return `const response = await http.request('${method}', \`${url}\`${configStr});`;
