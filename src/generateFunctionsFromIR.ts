@@ -20,6 +20,17 @@ export function generateFunctionsFromIR(irPath: string, outputDir: string): void
       fs.mkdirSync(tagDir, { recursive: true });
     }
 
+    // Copy shared modules (client and errors) to tag directory
+    const sharedDir = path.join(__dirname, '..', 'src', 'shared');
+    for (const fileName of ['client.ts', 'errors.ts']) {
+      const srcPath = path.join(sharedDir, fileName);
+      const destPath = path.join(tagDir, fileName);
+      if (fs.existsSync(srcPath)) {
+        const content = fs.readFileSync(srcPath, 'utf-8');
+        fs.writeFileSync(destPath, content, 'utf-8');
+      }
+    }
+
     // Generate content for this single function
     const content = generateFunctionContent(func);
 
