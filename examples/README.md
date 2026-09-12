@@ -15,7 +15,7 @@ export AGENT_TOKEN="your-space-traders-token-here"
 
 ### 1. Basic Example (`basic-example.ts`)
 
-A simple demonstration of calling the `navigateShip` function:
+A simple demonstration of calling the generated `getMyAgent` function:
 
 ```bash
 export AGENT_TOKEN="your-token"
@@ -23,39 +23,10 @@ npm run example:basic
 ```
 
 **What it shows:**
-- Initializing the `HttpClient`
-- Calling the generated `navigateShip()` function
+- Initializing the `AgentTokenClient`
+- Calling the generated `getMyAgent()` function
 - Handling success and error responses
 - Basic error handling
-
-### 2. Advanced Example (`advanced-example.ts`)
-
-Advanced patterns including retries, batch operations, and comprehensive error handling:
-
-```bash
-export AGENT_TOKEN="your-token"
-npm run example:advanced
-```
-
-**What it shows:**
-- Retry logic with exponential backoff
-- Rate limit handling (`RateLimitError`)
-- Batch API calls for multiple ships
-- Formatted output and data display
-
-### 3. Test Example (`test-example.ts`)
-
-Using the API in test suites with mock dependencies:
-
-```bash
-export AGENT_TOKEN="your-token"
-npm run example:test
-```
-
-**What it shows:**
-- Creating a mock `HttpClient` for unit tests
-- Writing test cases with `describe()` and `test()`
-- Integration test setup/teardown patterns
 
 ## API Structure
 
@@ -75,21 +46,21 @@ target/spacetraders-api/
 ### Import the generated API
 
 ```typescript
-import { HttpClient } from './target/spacetraders-api/client';
-import { navigateShip } from './target/spacetraders-api/fleet/navigateship';
+import { AgentTokenClient } from './target/spacetraders-api/client';
+import { getMyAgent } from './target/spacetraders-api/agents/getmyagent';
 import { ApiError } from './target/spacetraders-api/errors';
 ```
 
 ### Basic usage pattern
 
 ```typescript
-const http = new HttpClient({
+const http = new AgentTokenClient({
   token: process.env.AGENT_TOKEN,
 });
 
 try {
   // Returns data directly, throws ApiError on failure
-  const result = await navigateShip(http, 'ship-123');
+  const result = await getMyAgent(http);
   console.log('Success:', result);
 } catch (error) {
   if (error instanceof ApiError) {

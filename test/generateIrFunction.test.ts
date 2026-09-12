@@ -356,11 +356,16 @@ describe('generateIrFunction', () => {
       expect(func.name).toBe('navigateShip');
       expect(func.tag).toBe('fleet');
 
-      // Verify parameters
-      expect(func.parameters).toHaveLength(1);
+      // Verify parameters: path param plus request-body fields are all exposed
+      // as function params so the generated body is no longer empty.
+      expect(func.parameters).toHaveLength(3);
       expect(func.parameters[0].name).toBe('shipSymbol');
       expect(func.parameters[0].type).toBe('ShipSymbol');
       expect(func.parameters[0].required).toBe(true);
+      expect(func.parameters[1].name).toBe('systemSymbol');
+      expect(func.parameters[1].required).toBe(false);
+      expect(func.parameters[2].name).toBe('waypointSymbol');
+      expect(func.parameters[2].required).toBe(false);
 
       // Verify return type
       expect(func.returnType).toBe('NavigateShipResponse');

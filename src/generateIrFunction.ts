@@ -72,13 +72,22 @@ export function generateIrFunction(endpoint: Endpoint): IrFunctionJson {
     functionName = endpoint.endpointName;
   }
 
-  // Build function parameters from endpoint parameters
+  // Build function parameters from endpoint parameters (path/query)
   const parameters: IrFunctionParameter[] = (endpoint.parameters || []).map(param => ({
     name: param.name,
     type: param.schema ? inferTypeFromSchema(param.schema) : 'string',
     required: param.required ?? false,
     comment: param.description,
   }));
+
+  // Append request-body properties as parameters. The OpenAPI `parameters`
+  // array only lists path/query params, so body fields would otherwise be
+  // dropped from the generated signature (and the body would be emitted as
+  // an empty `Record<string, never>`). Derive each field's type, required
+  // flag (from the schema's `required` array), and description from the
+  // request body schema.
+  const bodyParams = inferRequestBodyParameters(endpoint.requestBodySchema);
+  parameters.push(...bodyParams);
 
   // Extract path parameters from endpoint (those used in URL paths)
   const pathParams: Record<string, string> = {};
@@ -135,6 +144,53 @@ export function generateIrFunction(endpoint: Endpoint): IrFunctionJson {
       security: endpoint.security,
     }],
   };
+}
+
+/**
+ * Infer the TypeScript type for a single schema object (used for body fields,
+ * which may be inline objects or $ref references).
+ */
+function inferBodyFieldType(schema: unknown): string {
+  if (!schema || typeof schema !== 'object') return 'string';
+  // Inline object/array/etc.
+  if ('type' in schema) return inferTypeFromSchema(schema);
+  // $ref -> resolve to the referenced type name.
+  if ('$ref' in schema && typeof schema.$ref === 'string') {
+    const parts = (schema.$ref as string).split('/');
+    return parts[parts.length - 1];
+  }
+  return 'string';
+}
+
+/**
+ * Build IR parameters from a request body schema's `properties`.
+ * Returns an empty array when there is no object body to model.
+ */
+function inferRequestBodyParameters(
+  requestBodySchema: unknown,
+): IrFunctionParameter[] {
+  if (
+    !requestBodySchema ||
+    typeof requestBodySchema !== 'object' ||
+    !('properties' in requestBodySchema)
+  ) {
+    return [];
+  }
+
+  const schema = requestBodySchema as {
+    properties: Record<string, { schema?: unknown; description?: string }>;
+    required?: unknown;
+  };
+  const requiredSet = new Set<string>(
+    Array.isArray(schema.required) ? (schema.required as string[]) : [],
+  );
+
+  return Object.entries(schema.properties).map(([name, prop]) => ({
+    name,
+    type: inferBodyFieldType(prop.schema),
+    required: requiredSet.has(name),
+    comment: prop.description,
+  }));
 }
 
 /**

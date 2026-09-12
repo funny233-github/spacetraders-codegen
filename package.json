@@ -7,9 +7,7 @@
     "generate": "node dist/index.js",
     "test": "jest",
     "test:watch": "jest -- Watch",
-    "example:basic": "node -r ts-node/register examples/basic-example.ts",
-    "example:advanced": "node -r ts-node/register examples/advanced-example.ts",
-    "example:test": "node -r ts-node/register examples/test-example.ts"
+    "example:basic": "node -r ts-node/register examples/basic-example.ts"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",
