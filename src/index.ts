@@ -60,11 +60,13 @@ function main() {
     apiOutputDir
   );
 
-  // Step 6: Generate TypeScript functions from IR
+  // Step 6: Generate TypeScript functions from IR (pass class IR so functions
+  // can call is_valid() on validated return types)
   console.log('Generating TypeScript functions...');
   generateFunctionsFromIR(
     path.join(outputDir, 'ir-function.json'),
-    apiOutputDir
+    apiOutputDir,
+    path.join(outputDir, 'ir-class.json')
   );
 
   console.log('✅ Generation complete!');

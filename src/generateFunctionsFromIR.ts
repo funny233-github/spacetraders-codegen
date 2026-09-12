@@ -1,12 +1,23 @@
 import fs from 'fs';
 import path from 'path';
 import { IrFunctionJson, IrFunctionDefinition, IrApiCall, IrErrorHandling, IrDataProcessor } from './generateIrFunction';
+import { getValidatedTypeNames } from './generateTypesFromIR';
 
 /**
  * Generate TypeScript function implementations from IR function definitions
  */
-export function generateFunctionsFromIR(irPath: string, outputDir: string): void {
-  const irData: IrFunctionJson = JSON.parse(fs.readFileSync(irPath, 'utf-8'));
+export function generateFunctionsFromIR(irPath: string, outputDir: string, classIrPath?: string): void {
+  let irData: IrFunctionJson;
+  try {
+    const raw = fs.readFileSync(irPath, 'utf-8');
+    irData = JSON.parse(raw) as IrFunctionJson;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to read IR file '${irPath}': ${message}`);
+  }
+
+  // Types that get an is_valid() method (read from the class IR when available).
+  const validatedTypes = collectValidatedTypes(classIrPath);
 
   // Copy shared modules (client and errors) to root target directory once
   const rootDir = outputDir;
@@ -33,7 +44,7 @@ export function generateFunctionsFromIR(irPath: string, outputDir: string): void
     }
 
     // Generate content for this single function
-    const content = generateFunctionContent(func);
+    const content = generateFunctionContent(func, validatedTypes);
 
     // Write to file - one file per function
     // Use function name as filename (lowercase)
@@ -48,9 +59,23 @@ export function generateFunctionsFromIR(irPath: string, outputDir: string): void
 }
 
 /**
+ * Read the class IR and return the set of type names that have an is_valid()
+ * method. Returns an empty set when the path is missing or unreadable.
+ */
+function collectValidatedTypes(classIrPath?: string): Set<string> {
+  if (!classIrPath) return new Set();
+  try {
+    const data = JSON.parse(fs.readFileSync(classIrPath, 'utf-8'));
+    return getValidatedTypeNames(data.classes || []);
+  } catch {
+    return new Set();
+  }
+}
+
+/**
  * Generate TypeScript module content for a single function
  */
-function generateFunctionContent(func: IrFunctionDefinition): string {
+function generateFunctionContent(func: IrFunctionDefinition, validatedTypes: Set<string>): string {
   const lines: string[] = [];
 
   // Determine auth scheme and import appropriate client
@@ -67,9 +92,20 @@ function generateFunctionContent(func: IrFunctionDefinition): string {
     }
   }
 
-  // Import statements (use relative path from subdirectory)
-  lines.push(`import { ${clientType}, type ApiResponse } from "../client";`);
+  // Collect named (non-primitive) types referenced in the signature so they can
+  // be imported from the shared types module. Without this, a return/param type
+  // like `Agent` or `Array<System>` would be referenced but never imported.
+  const namedTypes = collectNamedTypes(func);
+
+  // Import statements (use relative path from subdirectory).
+  // `ApiResponse` is intentionally not imported: functions return the unwrapped
+  // data (Promise<T>), never the ApiResponse<T> wrapper, so the import would be
+  // unused. `clientType` is always used as the `http` parameter type.
+  lines.push(`import { ${clientType} } from "../client";`);
   lines.push('import { ApiError } from "../errors";');
+  if (namedTypes.length > 0) {
+    lines.push(`import { ${namedTypes.join(', ')} } from "../types";`);
+  }
   lines.push('');
 
   // Add comment if exists
@@ -78,7 +114,7 @@ function generateFunctionContent(func: IrFunctionDefinition): string {
   }
 
   // Generate function signature and body
-  const functionCode = generateFunctionCode(func, clientType);
+  const functionCode = generateFunctionCode(func, clientType, validatedTypes);
   lines.push(functionCode);
 
   return lines.join('\n');
@@ -87,13 +123,13 @@ function generateFunctionContent(func: IrFunctionDefinition): string {
 /**
  * Generate TypeScript code for a single function with proper indentation
  */
-function generateFunctionCode(func: IrFunctionDefinition, clientType: string): string {
+function generateFunctionCode(func: IrFunctionDefinition, clientType: string, validatedTypes: Set<string>): string {
   const lines: string[] = [];
 
   const signature = generateFunctionSignature(func, clientType);
   lines.push(signature + ' {');  // Add opening brace on same line as signature
 
-  const bodyCode = generateFunctionBody(func);
+  const bodyCode = generateFunctionBody(func, validatedTypes);
   // Ensure each line in body is indented by 2 spaces
   const indentedBody = bodyCode.split('\n').map(line => '  ' + line).join('\n');
   lines.push(indentedBody);
@@ -101,6 +137,37 @@ function generateFunctionCode(func: IrFunctionDefinition, clientType: string): s
   lines.push('}');
 
   return lines.join('\n');
+}
+
+/**
+ * Collect the named (non-primitive) type names referenced in a function's
+ * signature (return type plus every parameter type). Handles nested
+ * `Array<X>` by descending into the element type. Primitives
+ * (string, number, boolean, object, any, unknown) are excluded.
+ */
+function collectNamedTypes(func: IrFunctionDefinition): string[] {
+  const primitives = new Set([
+    'string', 'number', 'boolean', 'object', 'any', 'unknown',
+  ]);
+  const names = new Set<string>();
+
+  const addType = (typeStr: string): void => {
+    const arrayMatch = typeStr.match(/^Array<(.+)>$/);
+    if (arrayMatch) {
+      addType(arrayMatch[1]);
+      return;
+    }
+    if (!primitives.has(typeStr)) {
+      names.add(typeStr);
+    }
+  };
+
+  addType(func.returnType);
+  for (const param of func.parameters) {
+    addType(param.type);
+  }
+
+  return Array.from(names).sort();
 }
 
 /**
@@ -136,7 +203,7 @@ function generateFunctionSignature(func: IrFunctionDefinition, clientType: strin
 /**
  * Generate TypeScript function body
  */
-function generateFunctionBody(func: IrFunctionDefinition): string {
+function generateFunctionBody(func: IrFunctionDefinition, validatedTypes: Set<string>): string {
   const lines: string[] = [];
 
   // Generate request body object if needed
@@ -154,6 +221,16 @@ function generateFunctionBody(func: IrFunctionDefinition): string {
 
   const errorHandlingCode = generateErrorHandlingCode(func.body.errorHandling);
   lines.push(errorHandlingCode);
+
+  // Validate the returned data against its OpenAPI constraints when the return
+  // type has an is_valid() method. Called once, right before returning.
+  if (validatedTypes.has(func.returnType)) {
+    lines.push('if (response.data === null || response.data === undefined) {');
+    lines.push(`  throw new Error('${func.returnType}: expected data');`);
+    lines.push('}');
+    lines.push('response.data.is_valid();');
+    lines.push('');
+  }
 
   // For now, return response.data for the success case
   if (func.body.postProcessing) {

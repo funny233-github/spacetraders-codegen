@@ -228,36 +228,53 @@ function inferTypeFromSchema(schema: unknown): string {
 }
 
 /**
- * Infer return type from response schema
+ * Infer the TypeScript return type from a response schema.
+ *
+ * SpaceTraders wraps payloads in a `{ data: <T> }` envelope, and the generated
+ * function returns `response.data`, so the return type is the type of `data`.
+ * Unwrap that envelope and resolve the inner type. `$ref` references resolve to
+ * the generated class name (the model name with the `.json` extension dropped).
  */
 function inferReturnType(responseSchema: unknown): string {
   if (!responseSchema || typeof responseSchema !== 'object') return 'any';
 
-  // Check for $ref
+  // Top-level $ref -> referenced type name (e.g. "#/components/schemas/Fleet" -> "Fleet").
   if ('$ref' in responseSchema && typeof responseSchema.$ref === 'string') {
-    const parts = responseSchema.$ref.split('/');
-    return parts[parts.length - 1];
+    return normalizeRefName(responseSchema.$ref as string);
   }
 
-  // Check type
-  if ('type' in responseSchema) {
-    switch (responseSchema.type) {
-      case 'object':
-        // If it has properties, it's an interface
-        if ('properties' in responseSchema && responseSchema.properties) {
-          return 'object';
-        }
-        return 'object';
-      case 'array':
-        if ('items' in responseSchema && responseSchema.items) {
-          const itemType = inferReturnType(responseSchema.items);
-          return `Array<${itemType}>`;
-        }
-        return 'Array<unknown>';
-      default:
-        return inferTypeFromSchema(responseSchema);
-    }
+  if (Array.isArray(responseSchema)) return 'Array<unknown>';
+
+  const schema = responseSchema as {
+    type?: string;
+    properties?: Record<string, unknown>;
+    items?: unknown;
+  };
+
+  // Standard SpaceTraders envelope: { data: <innerType> }.
+  if (schema.properties && 'data' in schema.properties) {
+    return inferReturnType(schema.properties.data);
   }
 
-  return 'any';
+  // Array response: [ <itemType> ].
+  if (schema.type === 'array' && schema.items) {
+    return `Array<${inferReturnType(schema.items)}>`;
+  }
+
+  // Bare object -> object.
+  if (schema.type === 'object' && schema.properties) {
+    return 'object';
+  }
+
+  return inferTypeFromSchema(responseSchema);
+}
+
+/**
+ * Resolve a $ref path to a class type name, dropping the `.json` model
+ * extension so it matches the generated class name
+ * (e.g. "../models/Agent.json" -> "Agent").
+ */
+function normalizeRefName(ref: string): string {
+  const base = ref.split('/').pop() ?? '';
+  return base.replace(/\.json$/, '');
 }
