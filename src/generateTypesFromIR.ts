@@ -80,7 +80,7 @@ function generateTypeCode(cls: IrClassDefinition): string {
     lines.push(`export ${keyword} ${cls.name} {`);
 
     for (const field of cls.fields || []) {
-      lines.push(generateFieldCode(field));
+      lines.push(generateFieldCode(field, 1, keyword === 'class'));
     }
 
     const isValidMethod = generateIsValidMethod(cls);
@@ -118,12 +118,15 @@ function extractBaseType(schema: SchemaLike): string {
 /**
  * Generate TypeScript code for a single field with consistent formatting
  */
-function generateFieldCode(field: IrField, indentLevel: number = 1): string {
+function generateFieldCode(field: IrField, indentLevel: number = 1, isClass: boolean = false): string {
   const indent = '  '.repeat(indentLevel);
   const lines: string[] = [];
 
-  // Determine required modifier
-  const requiredModifier = field.required ? '' : '?';
+  // Determine required modifier. In a class, required fields use the definite
+  // assignment assertion (!) so strictPropertyInitialization doesn't require an
+  // initializer (the field is populated from external JSON). Optional fields
+  // use '?'. Interfaces keep the plain form.
+  let requiredModifier = field.required ? (isClass ? '!' : '') : '?';
 
   // Add field comment if exists (on its own line before the field)
   if (field.comment) {
@@ -134,7 +137,7 @@ function generateFieldCode(field: IrField, indentLevel: number = 1): string {
   if (field.fields && field.fields.length > 0) {
     // Generate inline object type with proper formatting
     const fieldTypes = field.fields.map(f => {
-      const fCode = generateFieldCode(f, indentLevel + 1);
+      const fCode = generateFieldCode(f, indentLevel + 1, isClass);
       return fCode;
     });
     const inlineBody = fieldTypes.join('\n');
