@@ -1,5 +1,5 @@
-import fs from 'fs';
-import path from 'path';
+import fs from "fs";
+import path from "path";
 
 export interface OpenApiSpec {
   openapi?: string;
@@ -11,10 +11,10 @@ export interface OpenApiSpec {
 }
 
 export function mergeSpec(baseDir: string): OpenApiSpec {
-  const specPath = path.join(baseDir, 'reference/SpaceTraders.json');
-  const modelsDir = path.join(baseDir, 'models');
+  const specPath = path.join(baseDir, "reference/SpaceTraders.json");
+  const modelsDir = path.join(baseDir, "models");
 
-  let spec: OpenApiSpec = JSON.parse(fs.readFileSync(specPath, 'utf-8'));
+  let spec: OpenApiSpec = JSON.parse(fs.readFileSync(specPath, "utf-8"));
 
   // Extract global security requirements
   spec.globalSecurity = spec.security;
@@ -23,11 +23,13 @@ export function mergeSpec(baseDir: string): OpenApiSpec {
   spec.components = spec.components || {};
   spec.components.schemas = spec.components.schemas || {};
 
-  const modelFiles = fs.readdirSync(modelsDir).filter(f => f.endsWith('.json'));
+  const modelFiles = fs
+    .readdirSync(modelsDir)
+    .filter((f) => f.endsWith(".json"));
   for (const file of modelFiles) {
-    const modelName = file.replace('.json', '');
+    const modelName = file.replace(".json", "");
     const modelPath = path.join(modelsDir, file);
-    const modelData = JSON.parse(fs.readFileSync(modelPath, 'utf-8'));
+    const modelData = JSON.parse(fs.readFileSync(modelPath, "utf-8"));
     spec.components.schemas[modelName] = modelData;
   }
 
@@ -38,20 +40,20 @@ export function mergeSpec(baseDir: string): OpenApiSpec {
 }
 
 function resolveRefs(obj: any): any {
-  if (obj === null || typeof obj !== 'object') return obj;
+  if (obj === null || typeof obj !== "object") return obj;
 
   if (Array.isArray(obj)) {
     return obj.map(resolveRefs);
   }
 
-  if (typeof obj === 'object') {
+  if (typeof obj === "object") {
     const resolved = { ...obj };
 
     if (obj.$ref) {
       // Simple resolution: convert ../models/Name.json to just the model name
-      const refPath = obj.$ref.replace('../models/', '').replace('./', '');
-      const modelName = refPath.replace('.json', '');
-      return { '$ref': modelName };
+      const refPath = obj.$ref.replace("../models/", "").replace("./", "");
+      const modelName = refPath.replace(".json", "");
+      return { $ref: modelName };
     }
 
     for (const key of Object.keys(resolved)) {

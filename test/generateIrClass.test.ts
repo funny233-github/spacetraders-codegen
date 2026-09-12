@@ -242,6 +242,38 @@ describe("generateIrClass", () => {
 
       expect(result.classes[0].name).toBe("GetShipDetailsResponse");
     });
+
+    it("should generate an interface for a flat object response (no data wrapper)", () => {
+      const responseSchema: SchemaLike = {
+        type: "object",
+        properties: {
+          status: { type: "string" },
+          version: { type: "string" },
+        },
+      };
+
+      const endpoint = createMockEndpoint(
+        "get-status",
+        "Global",
+        responseSchema,
+      );
+      const spec = createMockSpec();
+
+      const result = generateIrClass(endpoint, spec);
+
+      // getStatus -> GetStatusResponse, built from the flat object itself.
+      const responseClass = result.classes.find(
+        (c) => c.name === "GetStatusResponse",
+      );
+      expect(responseClass).toBeDefined();
+      expect(responseClass?.kind).toBe("interface");
+      expect(
+        responseClass?.fields?.find((f) => f.name === "status"),
+      ).toBeDefined();
+      expect(
+        responseClass?.fields?.find((f) => f.name === "version"),
+      ).toBeDefined();
+    });
   });
 
   describe("type collection", () => {
@@ -339,36 +371,38 @@ describe("generateIrClass", () => {
       }
 
       // Check that the 'data' field references the Ship interface
-      const dataField = dataInterface?.fields?.find(f => f.name === "data");
+      const dataField = dataInterface?.fields?.find((f) => f.name === "data");
       expect(dataField).toBeDefined();
       if (dataField) {
         // The type should be the Ship interface name
         expect(dataField.type).toBe("Ship");
       }
-      
+
       // Check that we have the Ship interface (for data object)
-      const shipInterface = result.classes.find(c => c.name === "Ship");
+      const shipInterface = result.classes.find((c) => c.name === "Ship");
       expect(shipInterface).toBeDefined();
-      
+
       if (shipInterface) {
         expect(shipInterface.kind).toBe("interface");
         // Ship should have fields: ship and position
         expect(shipInterface.fields).toHaveLength(2);
-        const shipField = shipInterface.fields?.find(f => f.name === "ship");
-        const positionField = shipInterface.fields?.find(f => f.name === "position");
+        const shipField = shipInterface.fields?.find((f) => f.name === "ship");
+        const positionField = shipInterface.fields?.find(
+          (f) => f.name === "position",
+        );
         expect(shipField).toBeDefined();
         expect(positionField).toBeDefined();
-        
+
         // The 'position' field should reference the X interface (named from first property)
         if (positionField) {
           expect(positionField.type).toBe("X");
         }
       }
-      
+
       // Check that we have the X interface (for position object, named from first property)
-      const xInterface = result.classes.find(c => c.name === "X");
+      const xInterface = result.classes.find((c) => c.name === "X");
       expect(xInterface).toBeDefined();
-      
+
       if (xInterface) {
         expect(xInterface.kind).toBe("interface");
         // X should have fields: x and y

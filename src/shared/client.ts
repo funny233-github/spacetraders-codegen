@@ -152,7 +152,7 @@ export class HttpClient {
     // `Agent` instance) rather than the wrapper. Endpoints that return a flat
     // object (like `GET /`) have no `data` field and are returned as-is.
     const unwrapped =
-      data && typeof data === 'object' && 'data' in data
+      data && typeof data === "object" && "data" in data
         ? (data as { data: unknown }).data
         : data;
 
@@ -199,7 +199,7 @@ export class AgentTokenClient extends HttpClient {
   constructor(config?: SpaceTradersConfig) {
     if (!config?.token && !process.env.AGENT_TOKEN) {
       throw new Error(
-        'AgentTokenClient requires AGENT_TOKEN or config.token (AgentToken scheme)'
+        "AgentTokenClient requires AGENT_TOKEN or config.token (AgentToken scheme)",
       );
     }
     super(config ?? {});
@@ -211,11 +211,13 @@ export class AgentTokenClient extends HttpClient {
  * Enforces usage of AccountToken (ACCOUNT_TOKEN env var or config.accountToken).
  */
 export class AccountTokenClient extends HttpClient {
-  constructor(config?: { accountToken?: string } & Omit<SpaceTradersConfig, 'token'>) {
+  constructor(
+    config?: { accountToken?: string } & Omit<SpaceTradersConfig, "token">,
+  ) {
     const token = config?.accountToken || process.env.ACCOUNT_TOKEN;
     if (!token) {
       throw new Error(
-        'AccountTokenClient requires ACCOUNT_TOKEN or config.accountToken (AccountToken scheme)'
+        "AccountTokenClient requires ACCOUNT_TOKEN or config.accountToken (AccountToken scheme)",
       );
     }
     super({ ...config, token });

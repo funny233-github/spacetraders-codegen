@@ -1,4 +1,4 @@
-import { Endpoint } from './extractEndpoint';
+import { Endpoint, getResponseTypeInterfaceName } from "./extractEndpoint";
 
 // Function parameter for IR
 export interface IrFunctionParameter {
@@ -14,7 +14,7 @@ export interface IrFunctionParameter {
 
 // API call representation
 export interface IrApiCall {
-  method: 'GET' | 'POST' | 'PUT' | 'DELETE';
+  method: "GET" | "POST" | "PUT" | "DELETE";
   path: string;
   params?: Record<string, string>;
   body?: string;
@@ -23,7 +23,7 @@ export interface IrApiCall {
 
 // Error handling configuration
 export interface IrErrorHandling {
-  type: 'generic' | 'specific';
+  type: "generic" | "specific";
   genericMessage?: string;
   specificErrors?: Array<{
     code: number;
@@ -33,15 +33,15 @@ export interface IrErrorHandling {
 
 // Data processor after API call
 export interface IrDataProcessor {
-  type: 'simple' | 'transform' | 'custom';
-  dataField?: string;        // For simple: response.data.xxx
+  type: "simple" | "transform" | "custom";
+  dataField?: string; // For simple: response.data.xxx
   transformFunction?: string; // For transform: function name
-  customCode?: string[];      // For custom: inline code
+  customCode?: string[]; // For custom: inline code
 }
 
 // Function body representation
 export interface IrFunctionBody {
-  apiCall: IrApiCall;         // The actual API invocation
+  apiCall: IrApiCall; // The actual API invocation
   errorHandling: IrErrorHandling; // Error handling configuration
   postProcessing: IrDataProcessor; // Data processing after API call
 }
@@ -49,7 +49,7 @@ export interface IrFunctionBody {
 // IR function definition for code generation
 export interface IrFunctionDefinition {
   name: string;
-  tag: string;          // Tag/group this function belongs to
+  tag: string; // Tag/group this function belongs to
   parameters: IrFunctionParameter[];
   returnType: string;
   body: IrFunctionBody;
@@ -65,7 +65,9 @@ export interface IrFunctionJson {
 /**
  * Generate IR function definitions for many endpoints.
  */
-export function generateIrFunctionForEndpoints(endpoints: Endpoint[]): IrFunctionJson {
+export function generateIrFunctionForEndpoints(
+  endpoints: Endpoint[],
+): IrFunctionJson {
   const functions: IrFunctionDefinition[] = [];
   for (const ep of endpoints) {
     functions.push(generateSingleFunction(ep));
@@ -87,16 +89,18 @@ export function generateIrFunction(endpoint: Endpoint): IrFunctionJson {
  * validation hints (minLength, minimum, maximum, format, enum, ...).
  */
 function inferConstraintAnnotations(schema: unknown): string[] {
-  if (!schema || typeof schema !== 'object') return [];
+  if (!schema || typeof schema !== "object") return [];
   const s = schema as Record<string, unknown>;
   const annotations: string[] = [];
-  if (typeof s.minLength === 'number') annotations.push(`minLength: ${s.minLength}`);
-  if (typeof s.maxLength === 'number') annotations.push(`maxLength: ${s.maxLength}`);
-  if (typeof s.minimum === 'number') annotations.push(`minimum: ${s.minimum}`);
-  if (typeof s.maximum === 'number') annotations.push(`maximum: ${s.maximum}`);
-  if (typeof s.pattern === 'string') annotations.push(`pattern: ${s.pattern}`);
-  if (typeof s.format === 'string') annotations.push(`format: ${s.format}`);
-  if (Array.isArray(s.enum)) annotations.push(`enum: ${s.enum.join(' | ')}`);
+  if (typeof s.minLength === "number")
+    annotations.push(`minLength: ${s.minLength}`);
+  if (typeof s.maxLength === "number")
+    annotations.push(`maxLength: ${s.maxLength}`);
+  if (typeof s.minimum === "number") annotations.push(`minimum: ${s.minimum}`);
+  if (typeof s.maximum === "number") annotations.push(`maximum: ${s.maximum}`);
+  if (typeof s.pattern === "string") annotations.push(`pattern: ${s.pattern}`);
+  if (typeof s.format === "string") annotations.push(`format: ${s.format}`);
+  if (Array.isArray(s.enum)) annotations.push(`enum: ${s.enum.join(" | ")}`);
   return annotations;
 }
 
@@ -126,8 +130,8 @@ function withConstraintAnnotations(
 ): string | undefined {
   const annotations = inferConstraintAnnotations(schema);
   if (annotations.length === 0) return description;
-  const base = description ? `${description} ` : '';
-  return `${base}(${annotations.join(', ')})`;
+  const base = description ? `${description} ` : "";
+  return `${base}(${annotations.join(", ")})`;
 }
 
 function generateSingleFunction(endpoint: Endpoint): IrFunctionDefinition {
@@ -142,19 +146,25 @@ function generateSingleFunction(endpoint: Endpoint): IrFunctionDefinition {
   }
 
   // Build function parameters from endpoint parameters (path/query)
-  const parameters: IrFunctionParameter[] = (endpoint.parameters || []).map(param => ({
-    name: param.name,
-    type: param.schema ? inferTypeFromSchema(param.schema) : 'string',
-    required: param.required ?? false,
-    comment: withConstraintAnnotations(param.description, param.schema),
-  }));
+  const parameters: IrFunctionParameter[] = (endpoint.parameters || []).map(
+    (param) => ({
+      name: param.name,
+      type: param.schema ? inferTypeFromSchema(param.schema) : "string",
+      required: param.required ?? false,
+      comment: withConstraintAnnotations(param.description, param.schema),
+    }),
+  );
 
   // Extract path/query param names first so body fields can be renamed when
   // they collide with one (e.g. body `shipSymbol` alongside path `shipSymbol`).
   const pathQueryParamNames = new Set<string>();
   if (endpoint.parameters) {
     for (const param of endpoint.parameters) {
-      if (param.in === 'query' || param.in === 'path' || endpoint.path.includes(`{${param.name}}`)) {
+      if (
+        param.in === "query" ||
+        param.in === "path" ||
+        endpoint.path.includes(`{${param.name}}`)
+      ) {
         pathQueryParamNames.add(param.name);
       }
     }
@@ -167,13 +177,18 @@ function generateSingleFunction(endpoint: Endpoint): IrFunctionDefinition {
   // flag (from the schema's `required` array), and description from the
   // request body schema. Body fields that collide with a path/query param are
   // renamed to keep the signature valid.
-  const bodyParams = inferRequestBodyParameters(endpoint.requestBodySchema, pathQueryParamNames);
+  const bodyParams = inferRequestBodyParameters(
+    endpoint.requestBodySchema,
+    pathQueryParamNames,
+  );
   parameters.push(...bodyParams);
 
   // TypeScript requires required parameters to precede optional ones. Stable-sort
   // so required params (path params, required body fields) come first while the
   // relative order within each group is preserved.
-  parameters.sort((a, b) => (a.required === b.required ? 0 : a.required ? -1 : 1));
+  parameters.sort((a, b) =>
+    a.required === b.required ? 0 : a.required ? -1 : 1,
+  );
 
   // Extract path parameters from endpoint (those used in URL paths)
   const pathParams: Record<string, string> = {};
@@ -182,9 +197,12 @@ function generateSingleFunction(endpoint: Endpoint): IrFunctionDefinition {
   const queryParams: Record<string, string> = {};
   if (endpoint.parameters) {
     for (const param of endpoint.parameters) {
-      if (param.in === 'query') {
+      if (param.in === "query") {
         queryParams[param.name] = param.name;
-      } else if (param.in === 'path' || endpoint.path.includes(`{${param.name}}`)) {
+      } else if (
+        param.in === "path" ||
+        endpoint.path.includes(`{${param.name}}`)
+      ) {
         pathParams[param.name] = param.name;
       }
     }
@@ -192,23 +210,23 @@ function generateSingleFunction(endpoint: Endpoint): IrFunctionDefinition {
 
   // Build API call
   const apiCall: IrApiCall = {
-    method: endpoint.method as 'GET' | 'POST' | 'PUT' | 'DELETE',
+    method: endpoint.method as "GET" | "POST" | "PUT" | "DELETE",
     path: endpoint.path,
     params: pathParams,
     query: queryParams,
-    body: endpoint.requestBodySchema ? 'requestBody' : undefined,
+    body: endpoint.requestBodySchema ? "requestBody" : undefined,
   };
 
   // Build error handling
   const errorHandling: IrErrorHandling = {
-    type: 'generic',
-    genericMessage: 'API call failed',
+    type: "generic",
+    genericMessage: "API call failed",
   };
 
   // Build data processor
   const postProcessing: IrDataProcessor = {
-    type: 'simple',
-    dataField: 'data', // Assuming response has .data property
+    type: "simple",
+    dataField: "data", // Assuming response has .data property
   };
 
   // Build function body
@@ -218,8 +236,17 @@ function generateSingleFunction(endpoint: Endpoint): IrFunctionDefinition {
     postProcessing,
   };
 
-  // Determine return type
-  const returnType = endpoint.responseSchema ? inferReturnType(endpoint.responseSchema) : 'void';
+  // Determine return type. For inline-object responses (no $ref, no array),
+  // reference the generated per-endpoint *Response interface (named from the
+  // function name) instead of the bare `object`, so callers receive a named,
+  // typed payload. The same name is used for the http.get<T> generic.
+  const returnType = endpoint.responseSchema
+    ? inferReturnType(endpoint.responseSchema)
+    : "void";
+  const resolvedReturnType =
+    returnType === "object" && endpoint.responseSchema
+      ? getResponseTypeInterfaceName(endpoint)
+      : returnType;
 
   // The function-level comment is the operation's description (the HTTP method's
   // .description field), not the short summary. Fall back to the summary only if
@@ -230,7 +257,7 @@ function generateSingleFunction(endpoint: Endpoint): IrFunctionDefinition {
     name: functionName,
     tag: endpoint.endpointName,
     parameters,
-    returnType,
+    returnType: resolvedReturnType,
     body: functionBody,
     comment,
     security: endpoint.security,
@@ -242,15 +269,15 @@ function generateSingleFunction(endpoint: Endpoint): IrFunctionDefinition {
  * which may be inline objects or $ref references).
  */
 function inferBodyFieldType(schema: unknown): string {
-  if (!schema || typeof schema !== 'object') return 'string';
+  if (!schema || typeof schema !== "object") return "string";
   // Inline object/array/etc.
-  if ('type' in schema) return inferTypeFromSchema(schema);
+  if ("type" in schema) return inferTypeFromSchema(schema);
   // $ref -> resolve to the referenced type name.
-  if ('$ref' in schema && typeof schema.$ref === 'string') {
-    const parts = (schema.$ref as string).split('/');
+  if ("$ref" in schema && typeof schema.$ref === "string") {
+    const parts = (schema.$ref as string).split("/");
     return parts[parts.length - 1];
   }
-  return 'string';
+  return "string";
 }
 
 /**
@@ -263,8 +290,8 @@ function inferRequestBodyParameters(
 ): IrFunctionParameter[] {
   if (
     !requestBodySchema ||
-    typeof requestBodySchema !== 'object' ||
-    !('properties' in requestBodySchema)
+    typeof requestBodySchema !== "object" ||
+    !("properties" in requestBodySchema)
   ) {
     return [];
   }
@@ -282,7 +309,9 @@ function inferRequestBodyParameters(
     // (as in the SpaceTraders spec, where `minLength`/`minimum`/`type` are on
     // the property itself). Resolve whichever is present so both type inference
     // and constraint annotations see the real schema.
-    const fieldSchema = (prop.schema !== undefined ? prop.schema : prop) as unknown;
+    const fieldSchema = (
+      prop.schema !== undefined ? prop.schema : prop
+    ) as unknown;
     // If the body field name collides with a path/query param already in the
     // signature, give it a distinct variable name but keep the original field
     // name so the request body is still correct.
@@ -301,34 +330,39 @@ function inferRequestBodyParameters(
  * Infer TypeScript type from a schema object
  */
 function inferTypeFromSchema(schema: unknown): string {
-  if (!schema || typeof schema !== 'object') return 'any';
+  if (!schema || typeof schema !== "object") return "any";
 
   // Check for $ref
-  if ('$ref' in schema && typeof schema.$ref === 'string') {
-    const parts = schema.$ref.split('/');
+  if ("$ref" in schema && typeof schema.$ref === "string") {
+    const parts = schema.$ref.split("/");
     return parts[parts.length - 1];
   }
 
   // Check type
-  if ('type' in schema) {
+  if ("type" in schema) {
     switch (schema.type) {
-      case 'string': return 'string';
-      case 'number': return 'number';
-      case 'integer': return 'number';
-      case 'boolean': return 'boolean';
-      case 'array':
-        if ('items' in schema && schema.items) {
+      case "string":
+        return "string";
+      case "number":
+        return "number";
+      case "integer":
+        return "number";
+      case "boolean":
+        return "boolean";
+      case "array":
+        if ("items" in schema && schema.items) {
           const itemType = inferTypeFromSchema(schema.items);
           return `Array<${itemType}>`;
         }
-        return 'Array<unknown>';
-      case 'object':
-        return 'object';
-      default: return 'any';
+        return "Array<unknown>";
+      case "object":
+        return "object";
+      default:
+        return "any";
     }
   }
 
-  return 'any';
+  return "any";
 }
 
 /**
@@ -340,14 +374,14 @@ function inferTypeFromSchema(schema: unknown): string {
  * the generated class name (the model name with the `.json` extension dropped).
  */
 function inferReturnType(responseSchema: unknown): string {
-  if (!responseSchema || typeof responseSchema !== 'object') return 'any';
+  if (!responseSchema || typeof responseSchema !== "object") return "any";
 
   // Top-level $ref -> referenced type name (e.g. "#/components/schemas/Fleet" -> "Fleet").
-  if ('$ref' in responseSchema && typeof responseSchema.$ref === 'string') {
+  if ("$ref" in responseSchema && typeof responseSchema.$ref === "string") {
     return normalizeRefName(responseSchema.$ref as string);
   }
 
-  if (Array.isArray(responseSchema)) return 'Array<unknown>';
+  if (Array.isArray(responseSchema)) return "Array<unknown>";
 
   const schema = responseSchema as {
     type?: string;
@@ -356,18 +390,18 @@ function inferReturnType(responseSchema: unknown): string {
   };
 
   // Standard SpaceTraders envelope: { data: <innerType> }.
-  if (schema.properties && 'data' in schema.properties) {
+  if (schema.properties && "data" in schema.properties) {
     return inferReturnType(schema.properties.data);
   }
 
   // Array response: [ <itemType> ].
-  if (schema.type === 'array' && schema.items) {
+  if (schema.type === "array" && schema.items) {
     return `Array<${inferReturnType(schema.items)}>`;
   }
 
   // Bare object -> object.
-  if (schema.type === 'object' && schema.properties) {
-    return 'object';
+  if (schema.type === "object" && schema.properties) {
+    return "object";
   }
 
   return inferTypeFromSchema(responseSchema);
@@ -379,6 +413,6 @@ function inferReturnType(responseSchema: unknown): string {
  * (e.g. "../models/Agent.json" -> "Agent").
  */
 function normalizeRefName(ref: string): string {
-  const base = ref.split('/').pop() ?? '';
-  return base.replace(/\.json$/, '');
+  const base = ref.split("/").pop() ?? "";
+  return base.replace(/\.json$/, "");
 }
