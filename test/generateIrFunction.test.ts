@@ -251,14 +251,15 @@ describe('generateIrFunction', () => {
   });
 
   describe('comment generation', () => {
-    it('should use summary as comment if available', () => {
+    it('should prefer description over summary when both are available', () => {
       const endpoint = createTestEndpoint({
         endpointName: 'get-ship',
         summary: 'Get ship details',
+        description: 'Fetches ship details from the API',
       });
 
       const result = generateIrFunction(endpoint);
-      expect(result.functions[0].comment).toBe('Get ship details');
+      expect(result.functions[0].comment).toBe('Fetches ship details from the API');
     });
 
     it('should use description as comment if summary is missing', () => {
@@ -375,8 +376,8 @@ describe('generateIrFunction', () => {
       expect(func.body.apiCall.path).toBe('/my/ships/{shipSymbol}/navigate');
       expect(func.body.apiCall.body).toBe('requestBody');
 
-      // Verify comment
-      expect(func.comment).toBe('Navigate Ship');
+      // Verify comment (operation description, not the short summary)
+      expect(func.comment).toBe('Navigates a ship to a new waypoint or system');
     });
   });
 });

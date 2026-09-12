@@ -147,6 +147,15 @@ export class HttpClient {
     const raw = await res.text();
     const data = raw ? JSON.parse(raw) : undefined;
 
+    // SpaceTraders wraps successful responses in a `{ data: <payload>, meta }`
+    // envelope. Unwrap one level so callers receive the actual payload (e.g. an
+    // `Agent` instance) rather than the wrapper. Endpoints that return a flat
+    // object (like `GET /`) have no `data` field and are returned as-is.
+    const unwrapped =
+      data && typeof data === 'object' && 'data' in data
+        ? (data as { data: unknown }).data
+        : data;
+
     if (!res.ok) {
       if (res.status === 429) {
         const ms =
@@ -161,7 +170,7 @@ export class HttpClient {
         "Request failed";
       return { ok: false, error: new ApiError(res.status, data, message) };
     }
-    return { ok: true, data: data as T };
+    return { ok: true, data: unwrapped as T };
   }
 
   get<T>(

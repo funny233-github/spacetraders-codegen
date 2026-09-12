@@ -136,8 +136,11 @@ function generateFieldCode(field: IrField, indentLevel: number = 1, isClass: boo
   // Handle nested inline objects
   if (field.fields && field.fields.length > 0) {
     // Generate inline object type with proper formatting
+    // Nested fields live inside an object type literal `{ ... }`, never inside a
+    // class body, so they must never use the definite-assignment (!) modifier
+    // (that is only valid for class property declarations).
     const fieldTypes = field.fields.map(f => {
-      const fCode = generateFieldCode(f, indentLevel + 1, isClass);
+      const fCode = generateFieldCode(f, indentLevel + 1, false);
       return fCode;
     });
     const inlineBody = fieldTypes.join('\n');
@@ -217,14 +220,19 @@ function collectFieldChecks(
   className: string,
   indent: string,
   out: string[],
+  parentGuard: string = '',
 ): void {
   // Optional fields are only checked when present, so guard each condition.
   const optionalGuard = !field.required ? `${expr} !== undefined && ` : '';
+  // `parentGuard` carries the undefined-checks of any optional ancestors so that
+  // accessing a nested property (e.g. `this.consumed.amount` when `consumed` is
+  // optional) typechecks under strict null checks.
+  const fullGuard = parentGuard + optionalGuard;
   const push = (cond: string, msg: string): void => {
     // Parenthesize the condition when guarded, so `a && b || c` parses as
     // `a && (b || c)` instead of `(a && b) || c`.
-    const wrapped = optionalGuard ? `(${cond})` : cond;
-    out.push(`${indent}if (${optionalGuard}${wrapped}) {`);
+    const wrapped = fullGuard ? `(${cond})` : cond;
+    out.push(`${indent}if (${fullGuard}${wrapped}) {`);
     out.push(`${indent}  throw new Error('${className}.${pathLabel}: ${msg}');`);
     out.push(`${indent}}`);
   };
@@ -253,7 +261,7 @@ function collectFieldChecks(
   }
   if (field.fields) {
     for (const child of field.fields) {
-      collectFieldChecks(child, `${expr}.${child.name}`, `${pathLabel}.${child.name}`, className, indent + '  ', out);
+      collectFieldChecks(child, `${expr}.${child.name}`, `${pathLabel}.${child.name}`, className, indent + '  ', out, fullGuard);
     }
   }
 }

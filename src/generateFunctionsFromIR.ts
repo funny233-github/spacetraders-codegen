@@ -178,26 +178,30 @@ function generateFunctionSignature(func: IrFunctionDefinition, clientType: strin
   // Return the data directly (not wrapped in ApiResponse) for better API ergonomics
   const returnType = `Promise<${func.returnType}>`;
 
-  const params: string[] = [];
-  params.push(`http: ${clientType}`);
+  // Build each parameter as a block, optionally preceded by a JSDoc comment so
+  // the parameter's OpenAPI description is preserved in the generated signature.
+  const paramBlocks: string[] = [];
+  paramBlocks.push(`http: ${clientType}`);
 
   for (const param of func.parameters) {
     const optionalModifier = param.required ? '' : '?';
-    params.push(`${param.name}${optionalModifier}: ${param.type}`);
+    const decl = `${param.name}${optionalModifier}: ${param.type}`;
+    paramBlocks.push(param.comment ? `/** ${param.comment} */\n  ${decl}` : decl);
   }
 
-  if (params.length === 1) {
-    return `export async function ${funcName}(${params[0]}): ${returnType}`;
-  } else {
-    // Multi-line formatting with consistent indentation
-    let signature = `export async function ${funcName}(`;
-    for (const param of params) {
-      signature += `\n  ${param},`;
-    }
-    signature = signature.slice(0, -1); // Remove trailing comma
-    signature += `\n): ${returnType}`;
-    return signature;
+  if (paramBlocks.length === 1) {
+    return `export async function ${funcName}(${paramBlocks[0]}): ${returnType}`;
   }
+
+  // Multi-line formatting with consistent indentation; comments stay attached
+  // to their parameter and share its indent level.
+  let signature = `export async function ${funcName}(`;
+  for (const block of paramBlocks) {
+    signature += `\n  ${block},`;
+  }
+  signature = signature.slice(0, -1); // Remove trailing comma
+  signature += `\n): ${returnType}`;
+  return signature;
 }
 
 /**
@@ -223,13 +227,19 @@ function generateFunctionBody(func: IrFunctionDefinition, validatedTypes: Set<st
   lines.push(errorHandlingCode);
 
   // Validate the returned data against its OpenAPI constraints when the return
-  // type has an is_valid() method. Called once, right before returning.
+  // type has an is_valid() method. The API returns a plain object, so instantiate
+  // the class and copy the data over before calling is_valid().
   if (validatedTypes.has(func.returnType)) {
     lines.push('if (response.data === null || response.data === undefined) {');
     lines.push(`  throw new Error('${func.returnType}: expected data');`);
     lines.push('}');
-    lines.push('response.data.is_valid();');
+    lines.push(`const data = new ${func.returnType}();`);
+    lines.push(`Object.assign(data, response.data);`);
+    lines.push(`data.is_valid();`);
     lines.push('');
+    // Return the validated class instance
+    lines.push('return data;');
+    return lines.join('\n');
   }
 
   // For now, return response.data for the success case
@@ -262,7 +272,10 @@ function generateRequestBodyCode(func: IrFunctionDefinition): string | null {
   const bodyParams: string[] = [];
   for (const param of func.parameters) {
     if (!pathParams.has(param.name) && !queryParams.has(param.name)) {
-      bodyParams.push(param.name);
+      // Use the original field name when the variable was renamed to avoid a
+      // path/query collision (e.g. var `shipSymbolBody` -> field `shipSymbol`).
+      const field = param.fieldName || param.name;
+      bodyParams.push(`${field}: ${param.name}`);
     }
   }
 
@@ -273,8 +286,8 @@ function generateRequestBodyCode(func: IrFunctionDefinition): string | null {
 
   // Generate request object creation
   const lines: string[] = [`const requestBody = {`];
-  for (const name of bodyParams) {
-    lines.push(`  ${name}: ${name},`);
+  for (const entry of bodyParams) {
+    lines.push(`  ${entry},`);
   }
   lines.push('};');
 
@@ -298,7 +311,17 @@ function generateApiCallCode(apiCall: IrApiCall, returnType?: string): string {
     }
     req += `\n${paramLines.join(',\n')}\n    }`;
   }
-  
+
+  // Add query parameters (e.g. pagination for list endpoints)
+  if (apiCall.query && Object.keys(apiCall.query).length > 0) {
+    req += `,\n    query: {`;
+    const queryLines: string[] = [];
+    for (const key of Object.keys(apiCall.query)) {
+      queryLines.push(`      ${key}: ${apiCall.query![key]}`);
+    }
+    req += `\n${queryLines.join(',\n')}\n    }`;
+  }
+
   if (apiCall.body) {
     req += `,\n    body: ${apiCall.body}`;
   }

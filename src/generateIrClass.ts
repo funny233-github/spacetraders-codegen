@@ -72,29 +72,45 @@ export interface ExtendedSpec extends OpenApiSpec {
 }
 
 /**
- * Generate IR class definitions from endpoint and spec
+ * Generate IR class definitions for a single endpoint. Thin wrapper over
+ * generateIrClassForEndpoints so the multi-endpoint aggregation logic lives in
+ * one place.
  */
 export function generateIrClass(endpoint: Endpoint, spec: OpenApiSpec): IrClassJson {
+  return generateIrClassForEndpoints([endpoint], spec);
+}
+
+/**
+ * Generate IR class definitions across many endpoints, deduping shared model
+ * classes by name. Schema classes (from components.schemas) are generated once;
+ * each endpoint contributes its own response-type interface and inline object
+ * interfaces.
+ */
+export function generateIrClassForEndpoints(endpoints: Endpoint[], spec: OpenApiSpec): IrClassJson {
   const classes: IrClassDefinition[] = [];
-  
+
   // Cast to extended spec for schemas access
   const extendedSpec = spec as ExtendedSpec;
   const components = extendedSpec.components || {};
-  // Use type assertion for accessing nested structure
   const schemas = (components as { schemas?: Record<string, unknown> }).schemas || {};
-
-  // Collect all needed types from request and response, including transitive refs
-  let neededTypes = collectNeededTypes(endpoint.requestBodySchema, endpoint.responseSchema);
-  
-  // Iteratively expand neededTypes to include all transitive references
   const allSchemas = schemas as Record<string, SchemaLike>;
+
+  // Aggregate all needed types across every endpoint (request + response),
+  // including transitive references.
+  const neededTypes = new Set<string>();
+  for (const ep of endpoints) {
+    for (const typeName of collectNeededTypes(ep.requestBodySchema, ep.responseSchema)) {
+      neededTypes.add(typeName);
+    }
+  }
+
+  // Iteratively expand neededTypes to include all transitive references
   let changed = true;
   while (changed) {
     changed = false;
     for (const typeName of Array.from(neededTypes)) {
       if (allSchemas[typeName]) {
-        const typeSchema = allSchemas[typeName];
-        const nestedRefs = collectNeededTypesFromSchema(typeSchema);
+        const nestedRefs = collectNeededTypesFromSchema(allSchemas[typeName]);
         for (const refType of nestedRefs) {
           if (!neededTypes.has(refType)) {
             neededTypes.add(refType);
@@ -105,8 +121,8 @@ export function generateIrClass(endpoint: Endpoint, spec: OpenApiSpec): IrClassJ
     }
   }
 
-  // Process each schema
-  for (const [typeName, schema] of Object.entries(schemas)) {
+  // Generate schema classes once (Object.entries naturally dedupes by name)
+  for (const [typeName, schema] of Object.entries(allSchemas)) {
     if (neededTypes.has(typeName)) {
       const classDef = convertSchemaToIrClass(typeName, schema as SchemaLike);
       if (classDef) {
@@ -115,34 +131,31 @@ export function generateIrClass(endpoint: Endpoint, spec: OpenApiSpec): IrClassJ
     }
   }
 
-  // Generate response type interface for this endpoint
-  const responseTypeDef = generateResponseTypeInterface(endpoint);
-  if (responseTypeDef) {
-    classes.push(responseTypeDef);
-  }
+  // Per-endpoint: response-type interface + inline object interfaces
+  for (const ep of endpoints) {
+    const responseTypeDef = generateResponseTypeInterface(ep);
+    if (responseTypeDef) {
+      classes.push(responseTypeDef);
+    }
 
-  // Collect inline objects and decide which become separate interfaces
-  const inlineObjects = collectInlineObjectSchemas(endpoint.responseSchema, 'response');
-  const interfaceMap = new Map<SchemaLike, string>();
-  const separateInterfaces: IrClassDefinition[] = [];
+    const inlineObjects = collectInlineObjectSchemas(ep.responseSchema, 'response');
+    const interfaceMap = new Map<SchemaLike, string>();
 
-  // First pass: collect ALL inline objects and their names
-  for (const inlineObj of inlineObjects) {
-    const name = generateUniqueName(inlineObj.schema, classes, inlineObj.path);
-    interfaceMap.set(inlineObj.schema, name);
-  }
+    // First pass: collect ALL inline objects and their names
+    for (const inlineObj of inlineObjects) {
+      const name = generateUniqueName(inlineObj.schema, classes, inlineObj.path);
+      interfaceMap.set(inlineObj.schema, name);
+    }
 
-  // Second pass: generate interfaces for ALL inline objects with complete interfaceMap
-  for (const inlineObj of inlineObjects) {
-    const name = interfaceMap.get(inlineObj.schema)!;
-    const classDef = convertSchemaToIrClass(name, inlineObj.schema, interfaceMap);
-    if (classDef) {
-      separateInterfaces.push(classDef);
+    // Second pass: generate interfaces for ALL inline objects
+    for (const inlineObj of inlineObjects) {
+      const name = interfaceMap.get(inlineObj.schema)!;
+      const classDef = convertSchemaToIrClass(name, inlineObj.schema, interfaceMap);
+      if (classDef) {
+        classes.push(classDef);
+      }
     }
   }
-
-  // Add separate interfaces to classes
-  classes.push(...separateInterfaces);
 
   return { classes };
 }

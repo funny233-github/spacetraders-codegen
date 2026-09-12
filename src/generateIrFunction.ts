@@ -6,6 +6,10 @@ export interface IrFunctionParameter {
   type: string;
   required: boolean;
   comment?: string;
+  // Original OpenAPI body field name. Set when the variable name was renamed to
+  // avoid a collision with a path/query param (e.g. body `shipSymbol` -> var
+  // `shipSymbolBody`); the request body must still use this field name.
+  fieldName?: string;
 }
 
 // API call representation
@@ -59,9 +63,74 @@ export interface IrFunctionJson {
 }
 
 /**
- * Generate IR function definition for an endpoint
+ * Generate IR function definitions for many endpoints.
+ */
+export function generateIrFunctionForEndpoints(endpoints: Endpoint[]): IrFunctionJson {
+  const functions: IrFunctionDefinition[] = [];
+  for (const ep of endpoints) {
+    functions.push(generateSingleFunction(ep));
+  }
+  return { functions };
+}
+
+/**
+ * Generate IR function definition for a single endpoint.
  */
 export function generateIrFunction(endpoint: Endpoint): IrFunctionJson {
+  return { functions: [generateSingleFunction(endpoint)] };
+}
+
+/**
+ * Extract OpenAPI constraint annotations from a raw schema, used for function
+ * parameter comments. Mirrors getFieldConstraints in generateTypesFromIR but
+ * operates on the raw schema shape so path/query/body params get the same
+ * validation hints (minLength, minimum, maximum, format, enum, ...).
+ */
+function inferConstraintAnnotations(schema: unknown): string[] {
+  if (!schema || typeof schema !== 'object') return [];
+  const s = schema as Record<string, unknown>;
+  const annotations: string[] = [];
+  if (typeof s.minLength === 'number') annotations.push(`minLength: ${s.minLength}`);
+  if (typeof s.maxLength === 'number') annotations.push(`maxLength: ${s.maxLength}`);
+  if (typeof s.minimum === 'number') annotations.push(`minimum: ${s.minimum}`);
+  if (typeof s.maximum === 'number') annotations.push(`maximum: ${s.maximum}`);
+  if (typeof s.pattern === 'string') annotations.push(`pattern: ${s.pattern}`);
+  if (typeof s.format === 'string') annotations.push(`format: ${s.format}`);
+  if (Array.isArray(s.enum)) annotations.push(`enum: ${s.enum.join(' | ')}`);
+  return annotations;
+}
+
+/**
+ * Return a variable name that does not collide with any name already in `used`.
+ * Colliding body fields (e.g. a body `shipSymbol` alongside a path `shipSymbol`)
+ * get a distinct variable so the generated signature stays valid.
+ */
+function uniqueParamName(name: string, used: Set<string>): string {
+  if (!used.has(name)) return name;
+  let candidate = `${name}_body`;
+  let suffix = 2;
+  while (used.has(candidate)) {
+    candidate = `${name}_${suffix++}`;
+  }
+  used.add(candidate);
+  return candidate;
+}
+
+/**
+ * Append constraint annotations to a parameter's description comment so the
+ * generated signature documents validation rules alongside the description.
+ */
+function withConstraintAnnotations(
+  description: string | undefined,
+  schema: unknown,
+): string | undefined {
+  const annotations = inferConstraintAnnotations(schema);
+  if (annotations.length === 0) return description;
+  const base = description ? `${description} ` : '';
+  return `${base}(${annotations.join(', ')})`;
+}
+
+function generateSingleFunction(endpoint: Endpoint): IrFunctionDefinition {
   // Derive function name from operationId or endpointName
   let functionName: string;
   if (endpoint.operationId) {
@@ -77,25 +146,45 @@ export function generateIrFunction(endpoint: Endpoint): IrFunctionJson {
     name: param.name,
     type: param.schema ? inferTypeFromSchema(param.schema) : 'string',
     required: param.required ?? false,
-    comment: param.description,
+    comment: withConstraintAnnotations(param.description, param.schema),
   }));
+
+  // Extract path/query param names first so body fields can be renamed when
+  // they collide with one (e.g. body `shipSymbol` alongside path `shipSymbol`).
+  const pathQueryParamNames = new Set<string>();
+  if (endpoint.parameters) {
+    for (const param of endpoint.parameters) {
+      if (param.in === 'query' || param.in === 'path' || endpoint.path.includes(`{${param.name}}`)) {
+        pathQueryParamNames.add(param.name);
+      }
+    }
+  }
 
   // Append request-body properties as parameters. The OpenAPI `parameters`
   // array only lists path/query params, so body fields would otherwise be
   // dropped from the generated signature (and the body would be emitted as
   // an empty `Record<string, never>`). Derive each field's type, required
   // flag (from the schema's `required` array), and description from the
-  // request body schema.
-  const bodyParams = inferRequestBodyParameters(endpoint.requestBodySchema);
+  // request body schema. Body fields that collide with a path/query param are
+  // renamed to keep the signature valid.
+  const bodyParams = inferRequestBodyParameters(endpoint.requestBodySchema, pathQueryParamNames);
   parameters.push(...bodyParams);
+
+  // TypeScript requires required parameters to precede optional ones. Stable-sort
+  // so required params (path params, required body fields) come first while the
+  // relative order within each group is preserved.
+  parameters.sort((a, b) => (a.required === b.required ? 0 : a.required ? -1 : 1));
 
   // Extract path parameters from endpoint (those used in URL paths)
   const pathParams: Record<string, string> = {};
+  // Extract query parameters (in === 'query'). These become function params and
+  // must be threaded into the request, otherwise list endpoints ignore them.
+  const queryParams: Record<string, string> = {};
   if (endpoint.parameters) {
     for (const param of endpoint.parameters) {
-      // Path parameters are typically in the URL path definition
-      // If parameter is in the path string, it's a path param
-      if (param.in === 'path' || endpoint.path.includes(`{${param.name}}`)) {
+      if (param.in === 'query') {
+        queryParams[param.name] = param.name;
+      } else if (param.in === 'path' || endpoint.path.includes(`{${param.name}}`)) {
         pathParams[param.name] = param.name;
       }
     }
@@ -106,6 +195,7 @@ export function generateIrFunction(endpoint: Endpoint): IrFunctionJson {
     method: endpoint.method as 'GET' | 'POST' | 'PUT' | 'DELETE',
     path: endpoint.path,
     params: pathParams,
+    query: queryParams,
     body: endpoint.requestBodySchema ? 'requestBody' : undefined,
   };
 
@@ -131,18 +221,19 @@ export function generateIrFunction(endpoint: Endpoint): IrFunctionJson {
   // Determine return type
   const returnType = endpoint.responseSchema ? inferReturnType(endpoint.responseSchema) : 'void';
 
-  const summaryOrDesc = endpoint.summary || endpoint.description;
+  // The function-level comment is the operation's description (the HTTP method's
+  // .description field), not the short summary. Fall back to the summary only if
+  // an endpoint has no description.
+  const comment = endpoint.description || endpoint.summary;
 
   return {
-    functions: [{
-      name: functionName,
-      tag: endpoint.endpointName,
-      parameters,
-      returnType,
-      body: functionBody,
-      comment: summaryOrDesc,
-      security: endpoint.security,
-    }],
+    name: functionName,
+    tag: endpoint.endpointName,
+    parameters,
+    returnType,
+    body: functionBody,
+    comment,
+    security: endpoint.security,
   };
 }
 
@@ -168,6 +259,7 @@ function inferBodyFieldType(schema: unknown): string {
  */
 function inferRequestBodyParameters(
   requestBodySchema: unknown,
+  takenNames?: Set<string>,
 ): IrFunctionParameter[] {
   if (
     !requestBodySchema ||
@@ -185,12 +277,24 @@ function inferRequestBodyParameters(
     Array.isArray(schema.required) ? (schema.required as string[]) : [],
   );
 
-  return Object.entries(schema.properties).map(([name, prop]) => ({
-    name,
-    type: inferBodyFieldType(prop.schema),
-    required: requiredSet.has(name),
-    comment: prop.description,
-  }));
+  return Object.entries(schema.properties).map(([fieldName, prop]) => {
+    // The field schema may live under `.schema` or sit directly on the property
+    // (as in the SpaceTraders spec, where `minLength`/`minimum`/`type` are on
+    // the property itself). Resolve whichever is present so both type inference
+    // and constraint annotations see the real schema.
+    const fieldSchema = (prop.schema !== undefined ? prop.schema : prop) as unknown;
+    // If the body field name collides with a path/query param already in the
+    // signature, give it a distinct variable name but keep the original field
+    // name so the request body is still correct.
+    const name = uniqueParamName(fieldName, takenNames || new Set<string>());
+    return {
+      name,
+      fieldName,
+      type: inferBodyFieldType(fieldSchema),
+      required: requiredSet.has(fieldName),
+      comment: withConstraintAnnotations(prop.description, fieldSchema),
+    };
+  });
 }
 
 /**
