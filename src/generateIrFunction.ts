@@ -134,7 +134,7 @@ function withConstraintAnnotations(
   return `${base}(${annotations.join(", ")})`;
 }
 
-function generateSingleFunction(endpoint: Endpoint): IrFunctionDefinition {
+export function generateSingleFunction(endpoint: Endpoint): IrFunctionDefinition {
   // Derive function name from operationId or endpointName
   let functionName: string;
   if (endpoint.operationId) {

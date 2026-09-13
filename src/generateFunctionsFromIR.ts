@@ -1,97 +1,66 @@
 import fs from "fs";
 import path from "path";
 import {
-  IrFunctionJson,
   IrFunctionDefinition,
   IrApiCall,
   IrErrorHandling,
   IrDataProcessor,
 } from "./generateIrFunction";
-import { getValidatedTypeNames } from "./generateTypesFromIR";
+import { IrFunctionFile, IrResponse } from "./irTypes";
+import { renderField, renderIsValid } from "./renderIr";
+import { IrType } from "./irTypes";
 
 /**
- * Generate TypeScript function implementations from IR function definitions
+ * Generate TypeScript function implementations from per-function IR files.
+ *
+ * Each entry carries its own local response type (R1). Non-object responses
+ * (R2 scalar/void, R3 $ref) have no response type and validate nothing.
  */
 export function generateFunctionsFromIR(
-  irPath: string,
+  functionIrFiles: IrFunctionFile[],
   outputDir: string,
-  classIrPath?: string,
 ): void {
-  let irData: IrFunctionJson;
-  try {
-    const raw = fs.readFileSync(irPath, "utf-8");
-    irData = JSON.parse(raw) as IrFunctionJson;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`Failed to read IR file '${irPath}': ${message}`);
-  }
-
-  // Types that get an is_valid() method (read from the class IR when available).
-  const validatedTypes = collectValidatedTypes(classIrPath);
-
-  // Copy shared modules (client and errors) to root target directory once
+  // Copy shared modules (client and errors) to root target directory once.
   const rootDir = outputDir;
   const sharedDir = path.join(__dirname, "..", "src", "shared");
   for (const fileName of ["client.ts", "errors.ts"]) {
     const srcPath = path.join(sharedDir, fileName);
     const destPath = path.join(rootDir, fileName);
     if (fs.existsSync(srcPath)) {
-      const content = fs.readFileSync(srcPath, "utf-8");
-      fs.writeFileSync(destPath, content, "utf-8");
+      fs.writeFileSync(destPath, fs.readFileSync(srcPath, "utf-8"), "utf-8");
     }
   }
 
-  // Generate functions for each function definition
-  for (const func of irData.functions) {
-    // Determine tag from IR definition (use tag field)
+  // Generate one file per function definition.
+  for (const ir of functionIrFiles) {
+    const func = ir.function;
+    // Determine tag from IR definition (use tag field).
     const tag = func.tag || "default";
-
-    // Create tag directory under the outputDir
     const tagDir = path.join(outputDir, tag.toLowerCase());
-
     if (!fs.existsSync(tagDir)) {
       fs.mkdirSync(tagDir, { recursive: true });
     }
 
-    // Generate content for this single function
-    const content = generateFunctionContent(func, validatedTypes);
-
-    // Write to file - one file per function
-    // Use function name as filename (lowercase)
-    const fileName = func.name.toLowerCase() + ".ts";
-    const outputPath = path.join(tagDir, fileName);
+    const content = generateFunctionContent(ir);
+    const outputPath = path.join(tagDir, `${func.name}.ts`);
     fs.writeFileSync(outputPath, content, "utf-8");
 
     console.log(`Generated TypeScript function: ${outputPath}`);
   }
 
-  console.log(`Total functions generated: ${irData.functions.length}`);
+  console.log(`Total functions generated: ${functionIrFiles.length}`);
 }
 
 /**
- * Read the class IR and return the set of type names that have an is_valid()
- * method. Returns an empty set when the path is missing or unreadable.
+ * Generate TypeScript module content for a single function (with its local
+ * response type when present).
  */
-function collectValidatedTypes(classIrPath?: string): Set<string> {
-  if (!classIrPath) return new Set();
-  try {
-    const data = JSON.parse(fs.readFileSync(classIrPath, "utf-8"));
-    return getValidatedTypeNames(data.classes || []);
-  } catch {
-    return new Set();
-  }
-}
-
-/**
- * Generate TypeScript module content for a single function
- */
-function generateFunctionContent(
-  func: IrFunctionDefinition,
-  validatedTypes: Set<string>,
-): string {
+function generateFunctionContent(ir: IrFunctionFile): string {
+  const func = ir.function;
+  const responseType = ir.responseType;
   const lines: string[] = [];
 
-  // Determine auth scheme and import appropriate client
+  // Determine auth scheme and import appropriate client.
   let clientType = "HttpClient";
   if (func.security) {
     for (const scheme of func.security) {
@@ -108,12 +77,10 @@ function generateFunctionContent(
   // Collect named (non-primitive) types referenced in the signature so they can
   // be imported from the shared types module. Without this, a return/param type
   // like `Agent` or `Array<System>` would be referenced but never imported.
-  const namedTypes = collectNamedTypes(func);
+  const namedTypes = collectNamedTypes(func, responseType);
 
-  // Import statements (use relative path from subdirectory).
-  // `ApiResponse` is intentionally not imported: functions return the unwrapped
-  // data (Promise<T>), never the ApiResponse<T> wrapper, so the import would be
-  // unused. `clientType` is always used as the `http` parameter type.
+  // Import statements (relative path from subdirectory). `clientType` is always
+  // used as the `http` parameter type.
   lines.push(`import { ${clientType} } from "../client";`);
   lines.push('import { ApiError } from "../errors";');
   if (namedTypes.length > 0) {
@@ -121,51 +88,53 @@ function generateFunctionContent(
   }
   lines.push("");
 
-  // Add comment if exists
+  // Local response type (R1): defined in this file, not imported.
+  if (responseType) {
+    lines.push(renderLocalType(responseType));
+    lines.push("");
+  }
+
+  // Add comment if exists.
   if (func.comment) {
     lines.push(`/** ${func.comment} */`);
   }
 
-  // Generate function signature and body
-  const functionCode = generateFunctionCode(func, clientType, validatedTypes);
-  lines.push(functionCode);
-
-  return lines.join("\n");
-}
-
-/**
- * Generate TypeScript code for a single function with proper indentation
- */
-function generateFunctionCode(
-  func: IrFunctionDefinition,
-  clientType: string,
-  validatedTypes: Set<string>,
-): string {
-  const lines: string[] = [];
-
-  const signature = generateFunctionSignature(func, clientType);
-  lines.push(signature + " {"); // Add opening brace on same line as signature
-
-  const bodyCode = generateFunctionBody(func, validatedTypes);
-  // Ensure each line in body is indented by 2 spaces
-  const indentedBody = bodyCode
+  // Generate function signature and body.
+  const clientTypeForBody = clientType;
+  const signature = generateFunctionSignature(func, clientTypeForBody);
+  lines.push(signature + " {");
+  const body = generateFunctionBody(func, responseType);
+  const indentedBody = body
     .split("\n")
     .map((line) => "  " + line)
     .join("\n");
   lines.push(indentedBody);
-
   lines.push("}");
 
   return lines.join("\n");
 }
 
+/** Render the local response type (class with is_valid, or interface). */
+function renderLocalType(responseType: IrResponse): string {
+  const keyword = responseType.kind === "class" ? "class" : "interface";
+  const fields = responseType.fields.map(renderField).join("\n");
+  const body = `export ${keyword} ${responseType.name} {\n${fields}\n}\n`;
+  if (keyword === "class") {
+    return body + renderIsValid(responseType.fields);
+  }
+  return body;
+}
+
 /**
  * Collect the named (non-primitive) type names referenced in a function's
- * signature (return type plus every parameter type). Handles nested
- * `Array<X>` by descending into the element type. Primitives
- * (string, number, boolean, object, any, unknown) are excluded.
+ * signature. For R1 (local response type) the return type is local (not
+ * imported); its field refs are collected. For R2/R3 the return type may be a
+ * global ref. Handles nested `Array<X>` by descending into the element type.
  */
-function collectNamedTypes(func: IrFunctionDefinition): string[] {
+function collectNamedTypes(
+  func: IrFunctionDefinition,
+  responseType?: IrResponse,
+): string[] {
   const primitives = new Set([
     "string",
     "number",
@@ -173,13 +142,14 @@ function collectNamedTypes(func: IrFunctionDefinition): string[] {
     "object",
     "any",
     "unknown",
+    "void",
   ]);
   const names = new Set<string>();
 
-  const addType = (typeStr: string): void => {
+  const addTypeStr = (typeStr: string): void => {
     const arrayMatch = typeStr.match(/^Array<(.+)>$/);
     if (arrayMatch) {
-      addType(arrayMatch[1]);
+      addTypeStr(arrayMatch[1]);
       return;
     }
     if (!primitives.has(typeStr)) {
@@ -187,12 +157,37 @@ function collectNamedTypes(func: IrFunctionDefinition): string[] {
     }
   };
 
-  addType(func.returnType);
+  if (responseType) {
+    // R1: return type is the local type name; collect refs from its fields.
+    for (const field of responseType.fields) {
+      collectTypeRefs(field.type, names);
+    }
+  } else {
+    // R2/R3: return type may be a global ref.
+    addTypeStr(func.returnType);
+  }
+
   for (const param of func.parameters) {
-    addType(param.type);
+    addTypeStr(param.type);
   }
 
   return Array.from(names).sort();
+}
+
+/** Collect all `ref` type names reachable from an IrType node. */
+function collectTypeRefs(type: IrType, acc: Set<string>): void {
+  switch (type.kind) {
+    case "ref":
+      acc.add(type.name);
+      break;
+    case "array":
+      collectTypeRefs(type.items, acc);
+      break;
+    case "object":
+      for (const f of type.fields || []) collectTypeRefs(f.type, acc);
+      if (type.mapValue) collectTypeRefs(type.mapValue, acc);
+      break;
+  }
 }
 
 /**
@@ -239,9 +234,10 @@ function generateFunctionSignature(
  */
 function generateFunctionBody(
   func: IrFunctionDefinition,
-  validatedTypes: Set<string>,
+  responseType?: IrResponse,
 ): string {
   const lines: string[] = [];
+  const validate = responseType?.kind === "class";
 
   // Generate request body object if needed
   const requestCode = generateRequestBodyCode(func);
@@ -259,10 +255,10 @@ function generateFunctionBody(
   const errorHandlingCode = generateErrorHandlingCode(func.body.errorHandling);
   lines.push(errorHandlingCode);
 
-  // Validate the returned data against its OpenAPI constraints when the return
-  // type has an is_valid() method. The API returns a plain object, so instantiate
-  // the class and copy the data over before calling is_valid().
-  if (validatedTypes.has(func.returnType)) {
+  // Validate the returned data against its OpenAPI constraints when the local
+  // response type is a class (has an is_valid() method). The API returns a plain
+  // object, so instantiate the class and copy the data over before is_valid().
+  if (validate) {
     lines.push("if (response.data === null || response.data === undefined) {");
     lines.push(`  throw new Error('${func.returnType}: expected data');`);
     lines.push("}");

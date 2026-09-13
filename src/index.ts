@@ -6,6 +6,10 @@ import { generateIrClassForEndpoints } from "./generateIrClass";
 import { generateIrFunctionForEndpoints } from "./generateIrFunction";
 import { generateTypesFromIR } from "./generateTypesFromIR";
 import { generateFunctionsFromIR } from "./generateFunctionsFromIR";
+import { buildGlobalTypesIR } from "./generateGlobalTypesIR";
+import { buildFunctionIR } from "./generateFunctionIR";
+import { RawSchema } from "./convertSchemaToIrType";
+import { IrFunctionFile } from "./irTypes";
 
 function main() {
   // Use relative path for API docs location
@@ -49,46 +53,57 @@ function main() {
       "...",
   );
 
-  // Step 3: Generate ir-class.json (type definitions, deduped across endpoints)
-  console.log("Generating ir-class.json...");
-  const classJson = generateIrClassForEndpoints(endpoints, spec);
-  fs.writeFileSync(
-    path.join(outputDir, "ir-class.json"),
-    JSON.stringify(classJson, null, 2),
-  );
-
-  // Step 4: Generate ir-function.json (function implementation IR)
-  console.log("Generating ir-function.json...");
-  const functionIr = generateIrFunctionForEndpoints(endpoints);
-  fs.writeFileSync(
-    path.join(outputDir, "ir-function.json"),
-    JSON.stringify(functionIr, null, 2),
-  );
-
-  // Step 5: Generate TypeScript types from IR
-  console.log("Generating TypeScript types...");
   const apiOutputDir = path.join(outputDir, "spacetraders-api");
-  // Clean the generated API directory so a partial-tag run (TAGS=...) is
-  // self-contained and doesn't leave stale files from a previous generation.
+  const irDir = path.join(outputDir, "ir");
+  if (!fs.existsSync(irDir)) {
+    fs.mkdirSync(irDir, { recursive: true });
+  }
+
+  // Step 3: Generate types-IR.json (global component types, deduped).
+  console.log("Generating types-IR.json...");
+  const componentSchemas = Object.entries(
+    spec.components?.schemas || {},
+  ).map(([name, schema]) => ({ name, schema: schema as RawSchema }));
+  const globalTypes = buildGlobalTypesIR(componentSchemas);
+  const globalIr = { types: globalTypes };
+  fs.writeFileSync(
+    path.join(irDir, "types-IR.json"),
+    JSON.stringify(globalIr, null, 2),
+  );
+
+  // Step 4: Generate per-function IR files ({tag}/{function}-IR.json).
+  console.log("Generating per-function IR files...");
+  const functionIrFiles: IrFunctionFile[] = [];
+  for (const endpoint of endpoints) {
+    const ir = buildFunctionIR(endpoint);
+    functionIrFiles.push(ir);
+    const tag = ir.function.tag || "default";
+    const tagIrDir = path.join(irDir, tag.toLowerCase());
+    if (!fs.existsSync(tagIrDir)) {
+      fs.mkdirSync(tagIrDir, { recursive: true });
+    }
+    fs.writeFileSync(
+      path.join(tagIrDir, `${ir.function.name}-IR.json`),
+      JSON.stringify(ir, null, 2),
+    );
+  }
+
+  // Step 5: Clean and generate TypeScript types from IR
+  console.log("Generating TypeScript types...");
   fs.rmSync(apiOutputDir, { recursive: true, force: true });
   fs.mkdirSync(apiOutputDir, { recursive: true });
-  generateTypesFromIR(path.join(outputDir, "ir-class.json"), apiOutputDir);
+  generateTypesFromIR(path.join(irDir, "types-IR.json"), apiOutputDir);
 
-  // Step 6: Generate TypeScript functions from IR (pass class IR so functions
-  // can call is_valid() on validated return types)
+  // Step 6: Generate TypeScript functions from IR (each file carries its local
+  // response type, so no class IR is needed for validation).
   console.log("Generating TypeScript functions...");
-  generateFunctionsFromIR(
-    path.join(outputDir, "ir-function.json"),
-    apiOutputDir,
-    path.join(outputDir, "ir-class.json"),
-  );
+  generateFunctionsFromIR(functionIrFiles, apiOutputDir);
 
   console.log("✅ Generation complete!");
   console.log(`Output files:`);
-  console.log(`  - ${process.cwd()}/${outputDir}/ir-class.json`);
-  console.log(`  - ${process.cwd()}/${outputDir}/ir-function.json`);
+  console.log(`  - ${process.cwd()}/${outputDir}/ir/types-IR.json`);
+  console.log(`  - ${process.cwd()}/${outputDir}/ir/<tag>/<function>-IR.json`);
   console.log(`  - ${process.cwd()}/${apiOutputDir}/types.ts`);
-  // Note: Functions are now organized by tags in subdirectories
   console.log(`  - ${process.cwd()}/${apiOutputDir}/<tag>/<functionName>.ts`);
 }
 

@@ -1,344 +1,96 @@
 import fs from "fs";
-import path from "path";
-import {
-  IrClassJson,
-  IrClassDefinition,
-  IrField,
-  SchemaLike,
-} from "./generateIrClass";
+import { IrGlobalType } from "./irTypes";
+import { renderField, renderIsValid } from "./renderIr";
 
-/**
- * Generate TypeScript types from IR class definitions only
- */
-export function generateTypesFromIR(
-  irClassPath: string,
-  outputDir: string,
-): void {
-  // Read IR JSON file
-  const irData: IrClassJson = JSON.parse(fs.readFileSync(irClassPath, "utf-8"));
-
-  // Ensure output directory exists
-  if (!fs.existsSync(outputDir)) {
-    fs.mkdirSync(outputDir, { recursive: true });
-  }
-
-  // Generate all types to a single file
-  const content = generateTypesContent(irData.classes);
-
-  // Write to output file
-  const outputPath = path.join(outputDir, "types.ts");
-  fs.writeFileSync(outputPath, content, "utf-8");
-
-  console.log(`Generated TypeScript types: ${outputPath}`);
+interface IrDocument {
+  types: IrGlobalType[];
 }
 
 /**
- * Generate TypeScript code content from class definitions
+ * Generate a single types.ts from the IR (global component types).
+ *
+ * @param irPath path to types-IR.json
+ * @param outputDir directory to write types.ts into
  */
-function generateTypesContent(classes: IrClassDefinition[]): string {
-  const lines: string[] = [];
+export function generateTypesFromIR(irPath: string, outputDir: string): void {
+  const ir = JSON.parse(fs.readFileSync(irPath, "utf-8")) as IrDocument;
+  const renderedTypes = ir.types.map(renderGlobalType);
+  const typeDeclarations = renderedTypes.join("\n");
 
-  // Generate all types
-  for (const cls of classes) {
-    const typeCode = generateTypeCode(cls);
-    lines.push(typeCode);
-    lines.push(""); // Empty line between types
-  }
-
-  // Add header comment
-  const header = [
-    "// Auto-generated TypeScript types from IR",
-    "// Source: ir-class.json",
-    "",
-    ...lines,
-  ].join("\n");
-
-  return header;
+  const header = `/**
+ * This file was auto-generated from codegen/src/generateTypesFromIR.ts
+ * Global component types.
+ */
+`;
+  const output = header + typeDeclarations;
+  fs.writeFileSync(`${outputDir}/types.ts`, output);
 }
 
-/**
- * Generate TypeScript code for a single class/interface/enum/typeAlias
- */
-function generateTypeCode(cls: IrClassDefinition): string {
-  const lines: string[] = [];
-
-  // Add comment if exists
-  if (cls.comment) {
-    lines.push(`/** ${cls.comment} */`);
+function renderGlobalType(cls: IrGlobalType): string {
+  // typeAlias: `export type Name = <baseType>;`
+  if (cls.typeSchema) {
+    const baseType = inferBaseType(cls.typeSchema);
+    return `export type ${cls.name} = ${baseType};`;
   }
 
-  // Generate enum
-  if (cls.kind === "enum") {
-    lines.push(`export enum ${cls.name} {`);
-    for (const member of cls.members || []) {
-      lines.push(`  ${member.name} = '${member.value}',`);
+  // enum: `export enum Name { ... }` + union type
+  if (cls.kind === "enum" || (cls.members && cls.members.length > 0)) {
+    return renderEnum(cls);
+  }
+
+  // class/interface
+  if (cls.kind === "class" || cls.kind === "interface") {
+    const keyword = cls.kind === "class" ? "class" : "interface";
+    const fields = (cls.fields || []).map(renderField).join("\n");
+    const comment = cls.comment ? `  /** ${cls.comment} */\n` : "";
+    const body = `export ${keyword} ${cls.name} {\n${comment}${fields}\n}\n`;
+    if (keyword === "class") {
+      return body + renderIsValid(cls.fields || []);
     }
-    lines.push("}");
-  }
-  // Generate type alias
-  else if (cls.kind === "typeAlias") {
-    const baseType = extractBaseType(cls.typeSchema as SchemaLike);
-    lines.push(`export type ${cls.name} = ${baseType};`);
-  }
-  // Generate interface or class
-  else if (cls.kind === "interface" || cls.kind === "class") {
-    // Emit a class (with an is_valid() method) when the type has constraints,
-    // otherwise a plain interface.
-    const keyword =
-      cls.kind === "class" || classHasConstraints(cls) ? "class" : "interface";
-    lines.push(`export ${keyword} ${cls.name} {`);
-
-    for (const field of cls.fields || []) {
-      lines.push(generateFieldCode(field, 1, keyword === "class"));
-    }
-
-    const isValidMethod = generateIsValidMethod(cls);
-    if (isValidMethod) {
-      lines.push(isValidMethod);
-    }
-
-    lines.push("}");
+    return body;
   }
 
-  return lines.join("\n");
+  return "";
 }
 
-/**
- * Extract base TypeScript type from schema
- */
-function extractBaseType(schema: SchemaLike): string {
-  if (schema.type === "string") {
-    // Add constraints as branded type if needed
-    if (schema.minLength || schema.maxLength || schema.pattern) {
-      return `string & { readonly brand: unique symbol }`;
-    }
-    return "string";
-  }
-  if (schema.type === "number" || schema.type === "integer") {
-    return "number";
-  }
-  if (schema.type === "boolean") {
-    return "boolean";
-  }
-  // Fallback to string
-  return "string";
+function renderEnum(cls: IrGlobalType): string {
+  const members = (cls.members || []).map((m) => {
+    const value = typeof m.value === "string" ? `"${m.value}"` : String(m.value);
+    return `  ${m.name} = ${value},`;
+  });
+  return `export enum ${cls.name} {\n${members.join("\n")}\n}`;
 }
 
-/**
- * Generate TypeScript code for a single field with consistent formatting
- */
-function generateFieldCode(
-  field: IrField,
-  indentLevel: number = 1,
-  isClass: boolean = false,
-): string {
-  const indent = "  ".repeat(indentLevel);
-  const lines: string[] = [];
-
-  // Determine required modifier. In a class, required fields use the definite
-  // assignment assertion (!) so strictPropertyInitialization doesn't require an
-  // initializer (the field is populated from external JSON). Optional fields
-  // use '?'. Interfaces keep the plain form.
-  const requiredModifier = field.required ? (isClass ? "!" : "") : "?";
-
-  // Add field comment if exists (on its own line before the field)
-  if (field.comment) {
-    lines.push(`${indent}/** ${field.comment} */`);
-  }
-
-  // Handle nested inline objects
-  if (field.fields && field.fields.length > 0) {
-    // Generate inline object type with proper formatting
-    // Nested fields live inside an object type literal `{ ... }`, never inside a
-    // class body, so they must never use the definite-assignment (!) modifier
-    // (that is only valid for class property declarations).
-    const fieldTypes = field.fields.map((f) => {
-      const fCode = generateFieldCode(f, indentLevel + 1, false);
-      return fCode;
-    });
-    const inlineBody = fieldTypes.join("\n");
-    const line = `${indent}${field.name}${requiredModifier}: {\n${inlineBody}\n${indent}};`;
-    lines.push(line);
-  } else {
-    // Generate field signature
-    const fieldName = field.name;
-    const fieldType = field.type;
-    const line = `${indent}${fieldName}${requiredModifier}: ${fieldType};`;
-    lines.push(line);
-  }
-
-  // Add constraint annotations (remind the user of the OpenAPI validation rules)
-  for (const constraint of getFieldConstraints(field)) {
-    lines.push(`${indent}/** ${constraint} */`);
-  }
-
-  return lines.join("\n");
-}
-
-/**
- * Build human-readable constraint annotations for a field, used to remind
- * consumers of the OpenAPI validation rules (minLength, maximum, format, ...).
- */
-function getFieldConstraints(field: IrField): string[] {
-  const comments: string[] = [];
-  if (field.minLength !== undefined)
-    comments.push(`minLength: ${field.minLength}`);
-  if (field.maxLength !== undefined)
-    comments.push(`maxLength: ${field.maxLength}`);
-  if (field.minimum !== undefined) comments.push(`minimum: ${field.minimum}`);
-  if (field.maximum !== undefined) comments.push(`maximum: ${field.maximum}`);
-  if (field.pattern !== undefined) comments.push(`pattern: ${field.pattern}`);
-  if (field.format !== undefined) comments.push(`format: ${field.format}`);
-  if (field.enum) comments.push(`enum: ${field.enum.join(" | ")}`);
-  return comments;
-}
-
-/** Whether a field (recursively) carries any constraint metadata. */
-function fieldHasConstraints(field: IrField): boolean {
-  return (
-    field.minLength !== undefined ||
-    field.maxLength !== undefined ||
-    field.minimum !== undefined ||
-    field.maximum !== undefined ||
-    field.pattern !== undefined ||
-    field.format !== undefined ||
-    field.enum !== undefined ||
-    (field.fields ? field.fields.some(fieldHasConstraints) : false)
-  );
-}
-
-/** Whether an object type carries any constraint metadata (and needs is_valid()). */
-export function classHasConstraints(cls: IrClassDefinition): boolean {
-  return (cls.fields && cls.fields.some(fieldHasConstraints)) || false;
-}
-
-/** Names of object types that get an is_valid() method. */
-export function getValidatedTypeNames(
-  classes: IrClassDefinition[],
-): Set<string> {
-  const names = new Set<string>();
-  for (const cls of classes) {
-    if (
-      (cls.kind === "interface" || cls.kind === "class") &&
-      classHasConstraints(cls)
-    ) {
-      names.add(cls.name);
-    }
-  }
-  return names;
-}
-
-/**
- * Collect `if (...) throw` statements for a field's constraints.
- * `expr` is the TypeScript expression to check (e.g. `this.symbol`),
- * `pathLabel` is a dotted path used in error messages (e.g. `symbol`).
- */
-function collectFieldChecks(
-  field: IrField,
-  expr: string,
-  pathLabel: string,
-  className: string,
-  indent: string,
-  out: string[],
-  parentGuard: string = "",
-): void {
-  // Optional fields are only checked when present, so guard each condition.
-  const optionalGuard = field.required ? "" : `${expr} !== undefined && `;
-  // `parentGuard` carries the undefined-checks of any optional ancestors so that
-  // accessing a nested property (e.g. `this.consumed.amount` when `consumed` is
-  // optional) typechecks under strict null checks.
-  const fullGuard = parentGuard + optionalGuard;
-  const push = (cond: string, msg: string): void => {
-    // Parenthesize the condition when guarded, so `a && b || c` parses as
-    // `a && (b || c)` instead of `(a && b) || c`.
-    const wrapped = fullGuard ? `(${cond})` : cond;
-    out.push(`${indent}if (${fullGuard}${wrapped}) {`);
-    out.push(
-      `${indent}  throw new Error('${className}.${pathLabel}: ${msg}');`,
-    );
-    out.push(`${indent}}`);
+function inferBaseType(typeSchema: unknown): string {
+  const schema = typeSchema as {
+    type?: string;
+    properties?: Record<string, unknown>;
+    items?: unknown;
   };
 
-  if (field.minLength !== undefined) {
-    push(
-      `typeof ${expr} !== 'string' || ${expr}.length < ${field.minLength}`,
-      `expected string with minLength ${field.minLength}`,
-    );
-  }
-  if (field.maxLength !== undefined) {
-    push(
-      `typeof ${expr} !== 'string' || ${expr}.length > ${field.maxLength}`,
-      `expected string with maxLength ${field.maxLength}`,
-    );
-  }
-  if (field.minimum !== undefined) {
-    push(
-      `typeof ${expr} !== 'number' || ${expr} < ${field.minimum}`,
-      `expected number >= ${field.minimum}`,
-    );
-  }
-  if (field.maximum !== undefined) {
-    push(
-      `typeof ${expr} !== 'number' || ${expr} > ${field.maximum}`,
-      `expected number <= ${field.maximum}`,
-    );
-  }
-  if (field.pattern !== undefined) {
-    push(
-      `typeof ${expr} !== 'string' || !/${field.pattern}/.test(${expr})`,
-      `expected to match pattern ${field.pattern}`,
-    );
-  }
-  if (field.format === "int32" || field.format === "int64") {
-    push(
-      `typeof ${expr} !== 'number' || !Number.isInteger(${expr})`,
-      "expected integer",
-    );
-  }
-  if (field.enum) {
-    const literals = field.enum.map((v) => JSON.stringify(v)).join(", ");
-    push(
-      `![${literals}].includes(${expr} as any)`,
-      `expected one of ${field.enum.join(", ")}`,
-    );
-  }
-  if (field.fields) {
-    for (const child of field.fields) {
-      collectFieldChecks(
-        child,
-        `${expr}.${child.name}`,
-        `${pathLabel}.${child.name}`,
-        className,
-        indent + "  ",
-        out,
-        fullGuard,
-      );
+  if (schema.type === "array" && schema.items) {
+    const items = schema.items as {
+      type?: string;
+      properties?: Record<string, unknown>;
+    };
+    if (items.type === "object" && items.properties) {
+      return "Record<string, unknown>";
     }
+    return "Array<unknown>";
   }
-}
+  if (schema.type === "object" && schema.properties) {
+    return "Record<string, unknown>";
+  }
 
-/** Generate the `is_valid()` method for a constrained object type (or null). */
-function generateIsValidMethod(cls: IrClassDefinition): string | null {
-  if (!classHasConstraints(cls)) return null;
-  const checks: string[] = [];
-  for (const field of cls.fields || []) {
-    collectFieldChecks(
-      field,
-      `this.${field.name}`,
-      field.name,
-      cls.name,
-      "    ",
-      checks,
-    );
+  switch (schema.type) {
+    case "string":
+      return "string";
+    case "number":
+    case "integer":
+      return "number";
+    case "boolean":
+      return "boolean";
+    default:
+      return "unknown";
   }
-  const lines: string[] = [];
-  lines.push(
-    "  /** Validate this instance against its OpenAPI constraints. Throws if invalid. */",
-  );
-  lines.push("  is_valid(): void {");
-  for (const check of checks) {
-    lines.push(check);
-  }
-  lines.push("  }");
-  return lines.join("\n");
 }
