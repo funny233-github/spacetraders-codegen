@@ -2,8 +2,6 @@ import fs from "fs";
 import path from "path";
 import { mergeSpec } from "./mergeSpec";
 import { extractEndpoints } from "./extractEndpoint";
-import { generateIrClassForEndpoints } from "./generateIrClass";
-import { generateIrFunctionForEndpoints } from "./generateIrFunction";
 import { generateTypesFromIR } from "./generateTypesFromIR";
 import { generateFunctionsFromIR } from "./generateFunctionsFromIR";
 import { buildGlobalTypesIR } from "./generateGlobalTypesIR";

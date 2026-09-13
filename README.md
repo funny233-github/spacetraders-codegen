@@ -213,9 +213,6 @@ src/shared/
 - [`examples/README.md`](examples/README.md) — using the generated API
 - [`docs/FUNCTIONS_GENERATOR.md`](docs/FUNCTIONS_GENERATOR.md) — function generation
 - [`docs/TYPES_GENERATOR.md`](docs/TYPES_GENERATOR.md) — type generation
-- [`DRAFT.md`](DRAFT.md), [`IR_REFACTOR_PLAN.md`](IR_REFACTOR_PLAN.md),
-  [`REF_UNREF_DESIGN.md`](REF_UNREF_DESIGN.md),
-  [`DUPLICATE_NAMES_ANALYSIS.md`](DUPLICATE_NAMES_ANALYSIS.md) — design notes
 
 ## License
 

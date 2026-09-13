@@ -1,4 +1,9 @@
-import { Endpoint, getResponseTypeInterfaceName } from "./extractEndpoint";
+import {
+  Endpoint,
+  getResponseTypeInterfaceName,
+  getFunctionName,
+} from "./extractEndpoint";
+import { normalizeRefName } from "./convertSchemaToIrType";
 
 // Function parameter for IR
 export interface IrFunctionParameter {
@@ -63,19 +68,6 @@ export interface IrFunctionJson {
 }
 
 /**
- * Generate IR function definitions for many endpoints.
- */
-export function generateIrFunctionForEndpoints(
-  endpoints: Endpoint[],
-): IrFunctionJson {
-  const functions: IrFunctionDefinition[] = [];
-  for (const ep of endpoints) {
-    functions.push(generateSingleFunction(ep));
-  }
-  return { functions };
-}
-
-/**
  * Generate IR function definition for a single endpoint.
  */
 export function generateIrFunction(endpoint: Endpoint): IrFunctionJson {
@@ -135,15 +127,8 @@ function withConstraintAnnotations(
 }
 
 export function generateSingleFunction(endpoint: Endpoint): IrFunctionDefinition {
-  // Derive function name from operationId or endpointName
-  let functionName: string;
-  if (endpoint.operationId) {
-    functionName = endpoint.operationId
-      .replace(/-([a-z])/g, (_, char) => char.toUpperCase())
-      .replace(/^([a-z])/g, (m: string) => m.toLowerCase());
-  } else {
-    functionName = endpoint.endpointName;
-  }
+  // Derive function name from operationId (camelCased) or endpointName.
+  const functionName = getFunctionName(endpoint);
 
   // Build function parameters from endpoint parameters (path/query)
   const parameters: IrFunctionParameter[] = (endpoint.parameters || []).map(
@@ -407,12 +392,3 @@ function inferReturnType(responseSchema: unknown): string {
   return inferTypeFromSchema(responseSchema);
 }
 
-/**
- * Resolve a $ref path to a class type name, dropping the `.json` model
- * extension so it matches the generated class name
- * (e.g. "../models/Agent.json" -> "Agent").
- */
-function normalizeRefName(ref: string): string {
-  const base = ref.split("/").pop() ?? "";
-  return base.replace(/\.json$/, "");
-}

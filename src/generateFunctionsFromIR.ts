@@ -61,15 +61,20 @@ function generateFunctionContent(ir: IrFunctionFile): string {
   const lines: string[] = [];
 
   // Determine auth scheme and import appropriate client.
+  // SpaceTraders marks auth as optional with an empty security entry `{}`;
+  // when present, the endpoint needs no token and uses the base HttpClient.
   let clientType = "HttpClient";
   if (func.security) {
-    for (const scheme of func.security) {
-      if (scheme["AgentToken"]) {
-        clientType = "AgentTokenClient";
-        break;
-      } else if (scheme["AccountToken"]) {
-        clientType = "AccountTokenClient";
-        break;
+    const optional = func.security.some((s) => Object.keys(s).length === 0);
+    if (!optional) {
+      for (const scheme of func.security) {
+        if (scheme["AgentToken"]) {
+          clientType = "AgentTokenClient";
+          break;
+        } else if (scheme["AccountToken"]) {
+          clientType = "AccountTokenClient";
+          break;
+        }
       }
     }
   }
@@ -359,17 +364,24 @@ function generateApiCallCode(apiCall: IrApiCall, returnType?: string): string {
 
   req += `\n  }`;
 
-  // Use http.post for POST/PUT, http.get for GET, etc.
-  if (apiCall.method === "GET") {
-    return returnType
-      ? `const response = await http.get<${returnType}>(${req});`
-      : `const response = await http.get(${req});`;
-  } else {
-    return returnType
-      ? `const response = await http.post<${returnType}>(${req});`
-      : `const response = await http.post(${req});`;
-  }
+  // Dispatch to the matching HttpClient method. Every HTTP verb maps to a
+  // client method so POST/PUT/PATCH/DELETE are sent with the correct verb
+  // (previously every non-GET call was emitted as http.post).
+  const clientMethod = HTTP_CLIENT_METHODS[apiCall.method] ?? "post";
+  const call = returnType
+    ? `http.${clientMethod}<${returnType}>`
+    : `http.${clientMethod}`;
+  return `const response = await ${call}(${req});`;
 }
+
+// Maps an OpenAPI HTTP method to the HttpClient method that sends it.
+const HTTP_CLIENT_METHODS: Record<string, string> = {
+  GET: "get",
+  POST: "post",
+  PUT: "put",
+  PATCH: "patch",
+  DELETE: "delete",
+};
 
 /**
  * Generate TypeScript code for error handling

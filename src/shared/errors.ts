@@ -14,8 +14,9 @@ export class ApiError extends Error {
 }
 
 /**
- * Error thrown when the API rate limit (2 requests / second) is exceeded.
- * Triggers automatic retry.
+ * Error returned when the API rate limit (2 requests / second) is exceeded and
+ * the client's retries (see HttpClient.send) are exhausted. The client retries
+ * 429s automatically before surfacing this.
  */
 export class RateLimitError extends ApiError {
   constructor(retryAfter: number | null, retryAfterMs: number) {

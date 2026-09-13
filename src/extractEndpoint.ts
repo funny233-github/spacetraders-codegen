@@ -1,5 +1,4 @@
 import fs from "fs";
-import path from "path";
 import { OpenApiSpec } from "./mergeSpec";
 
 // Endpoint representation for a single API operation
