@@ -6,7 +6,7 @@
  */
 
 import { AgentTokenClient } from "../target/spacetraders-api/client";
-import { getMyAgent } from "../target/spacetraders-api/agents/getmyagent";
+import { getMyAgent } from "../target/spacetraders-api/agents/getMyAgent";
 import { ApiError } from "../target/spacetraders-api/errors";
 
 /**
