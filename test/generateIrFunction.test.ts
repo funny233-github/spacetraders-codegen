@@ -208,6 +208,14 @@ describe("generateIrFunction", () => {
         endpointName: "navigate-ship",
         method: "POST",
         path: "/my/ships/{shipSymbol}/navigate",
+        parameters: [
+          {
+            name: "shipSymbol",
+            in: "path",
+            required: true,
+            schema: { type: "string" },
+          },
+        ],
         requestBodySchema: { type: "object" },
       });
 
@@ -224,6 +232,14 @@ describe("generateIrFunction", () => {
         endpointName: "get-ship",
         method: "GET",
         path: "/my/ships/{shipSymbol}",
+        parameters: [
+          {
+            name: "shipSymbol",
+            in: "path",
+            required: true,
+            schema: { type: "string" },
+          },
+        ],
       });
 
       const result = generateIrFunction(endpoint);
@@ -239,6 +255,14 @@ describe("generateIrFunction", () => {
         endpointName: "update-ship",
         method: "PUT",
         path: "/my/ships/{shipSymbol}",
+        parameters: [
+          {
+            name: "shipSymbol",
+            in: "path",
+            required: true,
+            schema: { type: "string" },
+          },
+        ],
       });
 
       const result = generateIrFunction(endpoint);
@@ -388,6 +412,49 @@ describe("generateIrFunction", () => {
 
       const result = generateIrFunction(endpoint);
       expect(result.functions[0].body.apiCall.body).toBeUndefined();
+    });
+
+    it("should fail when a path placeholder has no declared parameter", () => {
+      // The generated call interpolates path params itself and the client no
+      // longer substitutes at runtime, so an unmatched placeholder would ship
+      // a literal "{shipSymbol}" in the URL. Fail the build instead.
+      const endpoint = createTestEndpoint({
+        endpointName: "get-ship",
+        method: "GET",
+        path: "/my/ships/{shipSymbol}",
+      });
+
+      expect(() => generateIrFunction(endpoint)).toThrow(
+        'path placeholder "{shipSymbol}" has no matching parameter',
+      );
+    });
+
+    it("should accept a path whose placeholders are all declared", () => {
+      const endpoint = createTestEndpoint({
+        endpointName: "get-market",
+        method: "GET",
+        path: "/systems/{systemSymbol}/waypoints/{waypointSymbol}/market",
+        parameters: [
+          {
+            name: "systemSymbol",
+            in: "path",
+            required: true,
+            schema: { type: "string" },
+          },
+          {
+            name: "waypointSymbol",
+            in: "path",
+            required: true,
+            schema: { type: "string" },
+          },
+        ],
+      });
+
+      const apiCall = generateIrFunction(endpoint).functions[0].body.apiCall;
+      expect(apiCall.params).toEqual({
+        systemSymbol: "systemSymbol",
+        waypointSymbol: "waypointSymbol",
+      });
     });
   });
 

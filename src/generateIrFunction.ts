@@ -201,6 +201,20 @@ export function generateSingleFunction(endpoint: Endpoint): IrFunctionDefinition
     }
   }
 
+  // Every {placeholder} in the path must have a declared parameter: the
+  // generated call interpolates path params itself, so an unmatched
+  // placeholder would ship a literal "{x}" in the URL. The client no longer
+  // substitutes at runtime, so this invariant belongs here — fail the build
+  // instead of emitting a broken call.
+  for (const raw of endpoint.path.match(/\{(\w+)\}/g) ?? []) {
+    const placeholder = raw.slice(1, -1);
+    if (!(placeholder in pathParams)) {
+      throw new Error(
+        `${endpoint.method} ${endpoint.path}: path placeholder "{${placeholder}}" has no matching parameter`,
+      );
+    }
+  }
+
   // Build API call
   const apiCall: IrApiCall = {
     method: endpoint.method as "GET" | "POST" | "PUT" | "DELETE",
