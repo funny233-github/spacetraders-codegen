@@ -24,8 +24,6 @@ export interface SpaceTradersConfig {
 
 export interface RequestOptions {
   path: string;
-  /** Path parameters, e.g. `{ shipSymbol }`, which are substituted into the path. */
-  params?: Record<string, string | number>;
   /** Query parameters; `undefined` values are dropped. */
   query?: Record<string, string | number | boolean | undefined>;
   /** The JSON request body. */
@@ -80,15 +78,11 @@ export class HttpClient {
   }
 
   /**
-   * Build a fully-resolved URL from a path, path parameters, and query
-   * parameters.
+   * Build a fully-resolved URL from a path and query parameters. Path
+   * parameters are already interpolated by the generated callers.
    */
-  buildUrl(
-    path: string,
-    params?: Record<string, string | number>,
-    query?: RequestOptions["query"],
-  ): string {
-    let url = this.baseUrl + this.expandPath(path, params);
+  buildUrl(path: string, query?: RequestOptions["query"]): string {
+    let url = this.baseUrl + path;
     if (query) {
       const qs = new URLSearchParams(
         Object.entries(query)
@@ -98,19 +92,6 @@ export class HttpClient {
       if (qs) url += `?${qs}`;
     }
     return url;
-  }
-
-  private expandPath(
-    path: string,
-    params?: Record<string, string | number>,
-  ): string {
-    return path.replace(/\{(\w+)\}/g, (_match, key) => {
-      const value = params?.[key];
-      if (value === undefined) {
-        throw new Error(`Missing path parameter "${key}" for path "${path}"`);
-      }
-      return encodeURIComponent(String(value));
-    });
   }
 
   /**
@@ -143,7 +124,7 @@ export class HttpClient {
     let backoffMs = 250;
     for (;;) {
       await this.respectRateLimit();
-      const url = this.buildUrl(options.path, options.params, options.query);
+      const url = this.buildUrl(options.path, options.query);
       const method = options.method ?? "POST";
       const headers: Record<string, string> = {
         "User-Agent": "spacetraders-api-demo/0.1.0",

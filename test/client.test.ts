@@ -82,6 +82,29 @@ describe("HttpClient request shape", () => {
     );
   });
 
+  it("uses the given path verbatim (callers interpolate path params)", async () => {
+    const { http, captured } = makeClient();
+
+    await http.post({ path: "/my/ships/SHIP-1/orbit" });
+
+    expect(captured.url).toBe(
+      "https://api.spacetraders.io/v2/my/ships/SHIP-1/orbit",
+    );
+  });
+
+  it("builds the query string, dropping undefined values", async () => {
+    const { http, captured } = makeClient();
+
+    await http.get({
+      path: "/systems",
+      query: { page: 1, limit: 5, skip: undefined },
+    });
+
+    expect(captured.url).toBe(
+      "https://api.spacetraders.io/v2/systems?page=1&limit=5",
+    );
+  });
+
   it("still sends the auth and user-agent headers", async () => {
     const { http, captured } = makeClient();
 
