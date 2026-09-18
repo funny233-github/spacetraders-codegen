@@ -24,6 +24,9 @@ export interface IrApiCall {
   params?: Record<string, string>;
   body?: string;
   query?: Record<string, string>;
+  // Set when the request body is a single value (e.g. a $ref to a model)
+  // rather than an object whose properties become individual parameters.
+  bodyKind?: "direct";
 }
 
 // Error handling configuration
@@ -204,6 +207,11 @@ export function generateSingleFunction(endpoint: Endpoint): IrFunctionDefinition
     params: pathParams,
     query: queryParams,
     body: endpoint.requestBodySchema ? "requestBody" : undefined,
+    // A body that is a single value ($ref/scalar/array) is passed through
+    // as-is rather than being wrapped in an object literal.
+    bodyKind: isDirectBodySchema(endpoint.requestBodySchema)
+      ? "direct"
+      : undefined,
   };
 
   // Build error handling
@@ -281,7 +289,13 @@ function inferRequestBodyParameters(
     typeof requestBodySchema !== "object" ||
     !("properties" in requestBodySchema)
   ) {
-    return [];
+    // A body without `properties` may still be a direct payload: a $ref to a
+    // model (e.g. {"$ref": "Survey"}) or an inline scalar/array/enum. Model
+    // it as a single required parameter; the renderer emits the parameter
+    // itself as the request body. Empty object schemas yield no parameter
+    // and render as an empty body object.
+    const direct = inferDirectBodyParameter(requestBodySchema, takenNames);
+    return direct ? [direct] : [];
   }
 
   const schema = requestBodySchema as {
@@ -312,6 +326,69 @@ function inferRequestBodyParameters(
       comment: withConstraintAnnotations(prop.description, fieldSchema),
     };
   });
+}
+
+/**
+ * True when a request body schema is a single value (a $ref to a model, an
+ * inline scalar/array/enum) rather than an object with properties.
+ */
+export function isDirectBodySchema(schema: unknown): boolean {
+  if (!schema || typeof schema !== "object") return false;
+  const s = schema as Record<string, unknown>;
+  if ("properties" in s) return false;
+  if (typeof s.$ref === "string") return true;
+  if (Array.isArray(s.enum)) return true;
+  return typeof s.type === "string" && s.type !== "object";
+}
+
+/**
+ * Build a single IR parameter for a "direct" request body — a payload that is
+ * one value rather than an object with properties. Handles $ref bodies
+ * (e.g. {"$ref": "Survey"} -> `survey: Survey`) and inline scalar/array/enum
+ * bodies (-> `body: <type>`). Returns null for empty object schemas, which
+ * render as an empty body object.
+ */
+function inferDirectBodyParameter(
+  schema: unknown,
+  takenNames?: Set<string>,
+): IrFunctionParameter | null {
+  if (!schema || typeof schema !== "object") return null;
+  const s = schema as Record<string, unknown>;
+  const description =
+    typeof s.description === "string" ? s.description : undefined;
+
+  if (typeof s.$ref === "string") {
+    const typeName = normalizeRefName(s.$ref);
+    const name = uniqueParamName(lowerCamel(typeName), takenNames || new Set<string>());
+    return {
+      name,
+      fieldName: name,
+      type: typeName,
+      required: true,
+      comment: withConstraintAnnotations(description, s),
+    };
+  }
+
+  if (
+    Array.isArray(s.enum) ||
+    (typeof s.type === "string" && s.type !== "object")
+  ) {
+    const name = uniqueParamName("body", takenNames || new Set<string>());
+    return {
+      name,
+      fieldName: name,
+      type: inferTypeFromSchema(s),
+      required: true,
+      comment: withConstraintAnnotations(description, s),
+    };
+  }
+
+  return null;
+}
+
+/** `Survey` -> `survey`; names direct-body parameters after their type. */
+function lowerCamel(name: string): string {
+  return name.charAt(0).toLowerCase() + name.slice(1);
 }
 
 /**

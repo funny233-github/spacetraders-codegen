@@ -307,6 +307,17 @@ function generateRequestBodyCode(func: IrFunctionDefinition): string | null {
   const pathParams = new Set(Object.values(apiCall.params || {}));
   const queryParams = new Set(Object.values(apiCall.query || {}));
 
+  // Direct body: the payload is a single parameter (e.g. a $ref model object),
+  // passed through as-is instead of being wrapped in an object literal.
+  if (apiCall.bodyKind === "direct") {
+    const bodyParam = func.parameters.find(
+      (p) => !pathParams.has(p.name) && !queryParams.has(p.name),
+    );
+    if (bodyParam) {
+      return `const requestBody = ${bodyParam.name};`;
+    }
+  }
+
   const bodyParams: string[] = [];
   for (const param of func.parameters) {
     if (!pathParams.has(param.name) && !queryParams.has(param.name)) {

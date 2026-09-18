@@ -325,6 +325,86 @@ describe("generateIrFunction", () => {
     });
   });
 
+  describe("direct (non-object) request bodies", () => {
+    it("should model a $ref body as a single required parameter", () => {
+      const endpoint = createTestEndpoint({
+        endpointName: "fleet",
+        operationId: "extract-resources-with-survey",
+        path: "/my/ships/{shipSymbol}/extract/survey",
+        parameters: [
+          {
+            name: "shipSymbol",
+            in: "path",
+            required: true,
+            schema: { type: "string" },
+            description: "The ship symbol.",
+          },
+        ],
+        requestBodySchema: { $ref: "Survey" },
+      });
+
+      const func = generateIrFunction(endpoint).functions[0];
+
+      expect(func.parameters).toHaveLength(2);
+      expect(func.parameters[1]).toEqual({
+        name: "survey",
+        fieldName: "survey",
+        type: "Survey",
+        required: true,
+        comment: undefined,
+      });
+      expect(func.body.apiCall.body).toBe("requestBody");
+      expect(func.body.apiCall.bodyKind).toBe("direct");
+    });
+
+    it("should model an inline scalar body as a `body` parameter", () => {
+      const endpoint = createTestEndpoint({
+        endpointName: "test",
+        path: "/test",
+        requestBodySchema: { type: "string", description: "A raw payload" },
+      });
+
+      const func = generateIrFunction(endpoint).functions[0];
+
+      expect(func.parameters).toHaveLength(1);
+      expect(func.parameters[0].name).toBe("body");
+      expect(func.parameters[0].type).toBe("string");
+      expect(func.parameters[0].required).toBe(true);
+      expect(func.body.apiCall.bodyKind).toBe("direct");
+    });
+
+    it("should keep fields mode for object bodies with properties", () => {
+      const endpoint = createTestEndpoint({
+        endpointName: "test",
+        path: "/test",
+        requestBodySchema: {
+          type: "object",
+          properties: { symbol: { type: "string" } },
+        },
+      });
+
+      const func = generateIrFunction(endpoint).functions[0];
+
+      expect(func.parameters).toHaveLength(1);
+      expect(func.parameters[0].name).toBe("symbol");
+      expect(func.body.apiCall.bodyKind).toBeUndefined();
+    });
+
+    it("should emit no parameter for an empty object body", () => {
+      const endpoint = createTestEndpoint({
+        endpointName: "test",
+        path: "/test",
+        requestBodySchema: { type: "object" },
+      });
+
+      const func = generateIrFunction(endpoint).functions[0];
+
+      expect(func.parameters).toHaveLength(0);
+      expect(func.body.apiCall.body).toBe("requestBody");
+      expect(func.body.apiCall.bodyKind).toBeUndefined();
+    });
+  });
+
   describe("full endpoint simulation", () => {
     it("should correctly handle a realistic navigate-ship endpoint", () => {
       const endpoint: Endpoint = {
