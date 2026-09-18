@@ -21,6 +21,7 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "clean": "node scripts/clean.js",
     "generate": "node dist/index.js",
     "build:lib": "tsc -p tsconfig.lib.json",
     "build:publish": "npm run build && npm run generate && npm run build:lib",
