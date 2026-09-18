@@ -30,7 +30,8 @@ function renderGlobalType(cls: IrGlobalType): string {
   // typeAlias: `export type Name = <baseType>;`
   if (cls.typeSchema) {
     const baseType = inferBaseType(cls.typeSchema);
-    return `export type ${cls.name} = ${baseType};`;
+    const schema = cls.typeSchema as Record<string, unknown>;
+    return `${renderSchemaJSDoc(schema, cls.comment)}export type ${cls.name} = ${baseType};`;
   }
 
   // enum: `export enum Name { ... }` + union type
@@ -54,11 +55,56 @@ function renderGlobalType(cls: IrGlobalType): string {
 }
 
 function renderEnum(cls: IrGlobalType): string {
-  const members = (cls.members || []).map((m) => {
-    const value = typeof m.value === "string" ? `"${m.value}"` : String(m.value);
-    return `  ${m.name} = ${value},`;
+  const members = cls.members || [];
+  const values = members.map((m) =>
+    typeof m.value === "string" ? m.value : String(m.value),
+  );
+  // Literal-union type (like redocly) instead of a TS `enum`: exhaustiveness
+  // friendly, no runtime object, and clean hover hints. The `VALUE_n` member
+  // names carry no meaning, so the runtime object keys derive from the values.
+  const union = values.map((v) => `"${v}"`).join(" | ");
+  const entries = members.map((m) => {
+    const v = typeof m.value === "string" ? m.value : String(m.value);
+    return `  ${sanitizeEnumKey(v)}: "${v}",`;
   });
-  return `export enum ${cls.name} {\n${members.join("\n")}\n}`;
+  return `${renderTypeJSDoc(cls)}export type ${cls.name} = ${union};
+export const ${cls.name} = {
+${entries.join("\n")}
+} as const;`;
+}
+
+/** Render a 2-space JSDoc block from a global type's comment (or none). */
+function renderTypeJSDoc(cls: IrGlobalType): string {
+  if (!cls.comment) return "";
+  return `/**\n * ${cls.comment}\n */\n`;
+}
+
+/**
+ * Render a JSDoc block for a type alias from its raw OpenAPI schema, including
+ * constraint annotations (@minLength, @format, ...) so hover matches redocly.
+ */
+function renderSchemaJSDoc(
+  schema: Record<string, unknown>,
+  fallbackComment?: string,
+): string {
+  const body: string[] = [];
+  const desc =
+    typeof schema.description === "string" ? schema.description : fallbackComment;
+  if (desc) body.push(desc);
+  if (typeof schema.minLength === "number") body.push(`@minLength ${schema.minLength}`);
+  if (typeof schema.maxLength === "number") body.push(`@maxLength ${schema.maxLength}`);
+  if (typeof schema.minimum === "number") body.push(`@minimum ${schema.minimum}`);
+  if (typeof schema.maximum === "number") body.push(`@maximum ${schema.maximum}`);
+  if (typeof schema.pattern === "string") body.push(`@pattern ${schema.pattern}`);
+  if (typeof schema.format === "string") body.push(`@format ${schema.format}`);
+  if (body.length === 0) return "";
+  return `/**\n${body.map((b) => ` * ${b}`).join("\n")}\n */\n`;
+}
+
+/** Turn an enum value into a safe runtime object key (e.g. "NEUTRON_STAR"). */
+function sanitizeEnumKey(name: string): string {
+  const k = name.replace(/[^A-Za-z0-9_$]/g, "_");
+  return /^[A-Za-z_$]/.test(k) ? k : `_${k}`;
 }
 
 function inferBaseType(typeSchema: unknown): string {

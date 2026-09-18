@@ -242,7 +242,7 @@ describe("generateIrFunction", () => {
   });
 
   describe("data processor", () => {
-    it("should use simple data processing by default", () => {
+    it("should extract the response payload by default", () => {
       const endpoint = createTestEndpoint({
         endpointName: "get-ship",
       });
@@ -250,7 +250,6 @@ describe("generateIrFunction", () => {
       const result = generateIrFunction(endpoint);
       const postProcessing = result.functions[0].body.postProcessing;
 
-      expect(postProcessing.type).toBe("simple");
       expect(postProcessing.dataField).toBe("data");
     });
   });

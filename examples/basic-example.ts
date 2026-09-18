@@ -30,6 +30,7 @@ async function exampleGetAgent(): Promise<void> {
       console.log("❌ API Error:");
       console.log("Status:", error.status);
       console.log("Message:", error.message);
+      console.log("Body:", JSON.stringify(error.raw, null, 2));
     } else {
       console.error("💥 Unexpected error:", error);
     }

@@ -36,12 +36,16 @@ export interface IrErrorHandling {
   }>;
 }
 
-// Data processor after API call
+// Data processor after API call.
+//
+// SpaceTraders responses are uniform: every endpoint either wraps its payload
+// in a { data, meta } envelope (already unwrapped by HttpClient.send()) or
+// returns a flat object. The only post-processing required is extracting the
+// payload from the client's ApiResponse wrapper to match the function's
+// Promise<T> signature. The OpenAPI spec defines no envelope/unwrapping/
+// transformation concept, so there is a single processor semantic.
 export interface IrDataProcessor {
-  type: "simple" | "transform" | "custom";
-  dataField?: string; // For simple: response.data.xxx
-  transformFunction?: string; // For transform: function name
-  customCode?: string[]; // For custom: inline code
+  dataField: string; // response.<dataField> — always "data"
 }
 
 // Function body representation
@@ -210,8 +214,7 @@ export function generateSingleFunction(endpoint: Endpoint): IrFunctionDefinition
 
   // Build data processor
   const postProcessing: IrDataProcessor = {
-    type: "simple",
-    dataField: "data", // Assuming response has .data property
+    dataField: "data", // Extract the payload from the ApiResponse wrapper
   };
 
   // Build function body

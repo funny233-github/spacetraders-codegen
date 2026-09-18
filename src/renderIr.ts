@@ -32,8 +32,38 @@ function renderObjectType(type: IrObjectType): string {
 export function renderField(field: IrField2): string {
   const optional = field.optional ? "?" : "";
   const type = renderIrType(field.type);
-  const comment = field.description ? `  /** ${field.description} */\n` : "";
-  return `  ${comment}  ${field.name}${optional}: ${type};`;
+  const annotations = renderConstraintAnnotations(field);
+  if (annotations.length === 0) {
+    // Preserve existing output exactly when there are no constraints.
+    const comment = field.description ? `  /** ${field.description} */\n` : "";
+    return `${comment}  ${field.name}${optional}: ${type};`;
+  }
+  // Fields carrying OpenAPI constraints get a multi-line JSDoc block so the
+  // constraints are visible on hover (@minLength, @format, ...) — matching
+  // redocly's client. The block base (`/**`/`*/`) aligns with the field name
+  // at 2-space indent, with ` *` continuation lines one deeper.
+  const body: string[] = [];
+  if (field.description) body.push(field.description);
+  body.push(...annotations);
+  const lines = body.map((b) => `   * ${b}`);
+  return `  /**\n${lines.join("\n")}\n   */\n  ${field.name}${optional}: ${type};`;
+}
+
+/**
+ * Render OpenAPI constraint annotations for a field, in a stable order. The
+ * set of constraints mirrors the ones used by `renderIsValid` (see
+ * collectFieldChecks), so the hover annotations and the runtime validation
+ * stay in sync.
+ */
+export function renderConstraintAnnotations(field: IrField2): string[] {
+  const a: string[] = [];
+  if (field.minLength !== undefined) a.push(`@minLength ${field.minLength}`);
+  if (field.maxLength !== undefined) a.push(`@maxLength ${field.maxLength}`);
+  if (field.minimum !== undefined) a.push(`@minimum ${field.minimum}`);
+  if (field.maximum !== undefined) a.push(`@maximum ${field.maximum}`);
+  if (field.pattern !== undefined) a.push(`@pattern ${field.pattern}`);
+  if (field.format !== undefined) a.push(`@format ${field.format}`);
+  return a;
 }
 
 /**

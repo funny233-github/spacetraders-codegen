@@ -276,16 +276,11 @@ function generateFunctionBody(
     return lines.join("\n");
   }
 
-  // For now, return response.data for the success case
-  if (func.body.postProcessing) {
-    const postProcessCode = generatePostProcessingCode(
-      func.body.postProcessing,
-    );
-    lines.push(postProcessCode);
-  } else {
-    // Return the full response (ApiResponse<T>) to match function signature
-    lines.push("return response;");
-  }
+  // Post-processing: extract the payload from the client's ApiResponse wrapper
+  // to match the function's Promise<T> signature. The SpaceTraders { data, meta }
+  // envelope is already unwrapped by HttpClient.send(). postProcessing is a
+  // required field, so this always runs.
+  lines.push(generatePostProcessingCode(func.body.postProcessing));
 
   return lines.join("\n");
 }
@@ -336,33 +331,33 @@ function generateRequestBodyCode(func: IrFunctionDefinition): string | null {
 function generateApiCallCode(apiCall: IrApiCall, returnType?: string): string {
   // Build request object as formatted string
   let req = `{
-    path: '${apiCall.path}'`;
+  path: '${apiCall.path}'`;
 
   // Add path parameters if they exist (for URL substitution)
   if (apiCall.params && Object.keys(apiCall.params).length > 0) {
-    req += `,\n    params: {`;
+    req += `,\n  params: {`;
     const paramLines: string[] = [];
     for (const key of Object.keys(apiCall.params)) {
-      paramLines.push(`      ${key}: ${apiCall.params![key]}`);
+      paramLines.push(`    ${key}: ${apiCall.params![key]}`);
     }
-    req += `\n${paramLines.join(",\n")}\n    }`;
+    req += `\n${paramLines.join(",\n")}\n  }`;
   }
 
   // Add query parameters (e.g. pagination for list endpoints)
   if (apiCall.query && Object.keys(apiCall.query).length > 0) {
-    req += `,\n    query: {`;
+    req += `,\n  query: {`;
     const queryLines: string[] = [];
     for (const key of Object.keys(apiCall.query)) {
-      queryLines.push(`      ${key}: ${apiCall.query![key]}`);
+      queryLines.push(`    ${key}: ${apiCall.query![key]}`);
     }
-    req += `\n${queryLines.join(",\n")}\n    }`;
+    req += `\n${queryLines.join(",\n")}\n  }`;
   }
 
   if (apiCall.body) {
-    req += `,\n    body: ${apiCall.body}`;
+    req += `,\n  body: ${apiCall.body}`;
   }
 
-  req += `\n  }`;
+  req += `\n}`;
 
   // Dispatch to the matching HttpClient method. Every HTTP verb maps to a
   // client method so POST/PUT/PATCH/DELETE are sent with the correct verb
@@ -407,12 +402,10 @@ function generateErrorHandlingCode(errorHandling: IrErrorHandling): string {
  * Generate TypeScript code for post-processing
  */
 function generatePostProcessingCode(processor: IrDataProcessor): string {
-  if (processor.type === "simple") {
-    return `return response.${processor.dataField};`;
-  } else if (processor.type === "transform") {
-    return `return ${processor.transformFunction}(response.data);`;
-  } else if (processor.type === "custom" && processor.customCode) {
-    return processor.customCode.join("\n");
-  }
-  return "return response.data;";
+  // The only post-processing SpaceTraders responses require is extracting the
+  // payload from the client's ApiResponse wrapper (the { data, meta } envelope
+  // is already unwrapped by HttpClient.send()). The { data, meta } envelope is
+  // defined by SpaceTraders, not the OpenAPI spec, so no format-level
+  // transformation is needed.
+  return `return response.${processor.dataField};`;
 }
