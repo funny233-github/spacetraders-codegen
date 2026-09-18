@@ -341,20 +341,36 @@ function generateRequestBodyCode(func: IrFunctionDefinition): string | null {
 /**
  * Generate TypeScript code for API call using HttpClient post method
  */
-function generateApiCallCode(apiCall: IrApiCall, returnType?: string): string {
-  // Build request object as formatted string
-  let req = `{
-  path: '${apiCall.path}'`;
-
-  // Add path parameters if they exist (for URL substitution)
-  if (apiCall.params && Object.keys(apiCall.params).length > 0) {
-    req += `,\n  params: {`;
-    const paramLines: string[] = [];
-    for (const key of Object.keys(apiCall.params)) {
-      paramLines.push(`    ${key}: ${apiCall.params![key]}`);
-    }
-    req += `\n${paramLines.join(",\n")}\n  }`;
+/**
+ * Render an OpenAPI path as a TypeScript string literal, embedding path
+ * parameters directly into the URL template:
+ *
+ *   /my/ships/{shipSymbol}/orbit  ->  `/my/ships/${encodeURIComponent(shipSymbol)}/orbit`
+ *
+ * The placeholder -> variable mapping comes from `apiCall.params`. Paths with
+ * no parameters stay plain string literals.
+ */
+function renderPathTemplate(
+  path: string,
+  params?: Record<string, string>,
+): string {
+  if (!params || Object.keys(params).length === 0) {
+    return `'${path}'`;
   }
+  const rendered = path.replace(/\{(\w+)\}/g, (match, placeholder: string) => {
+    const variable = params[placeholder];
+    // No mapping (undeclared placeholder): keep it verbatim.
+    if (!variable) return match;
+    return "${encodeURIComponent(" + variable + ")}";
+  });
+  return "`" + rendered + "`";
+}
+
+function generateApiCallCode(apiCall: IrApiCall, returnType?: string): string {
+  // Build request object as formatted string. Path parameters are embedded in
+  // the path itself; only query params and a request body stay as objects.
+  let req = `{
+  path: ${renderPathTemplate(apiCall.path, apiCall.params)}`;
 
   // Add query parameters (e.g. pagination for list endpoints)
   if (apiCall.query && Object.keys(apiCall.query).length > 0) {
