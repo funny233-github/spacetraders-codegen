@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "outDir": "dist/client",
+    "rootDir": "target/spacetraders-api",
+    "declaration": true,
+    "declarationMap": true,
+    "noEmit": false
+  },
+  "include": ["target/spacetraders-api"]
+}

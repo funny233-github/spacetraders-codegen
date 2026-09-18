@@ -19,7 +19,7 @@ import { IrType } from "./irTypes";
 export function generateFunctionsFromIR(
   functionIrFiles: IrFunctionFile[],
   outputDir: string,
-): void {
+): string[] {
   // Copy shared modules (client and errors) to root target directory once.
   const rootDir = outputDir;
   const sharedDir = path.join(__dirname, "..", "src", "shared");
@@ -31,7 +31,9 @@ export function generateFunctionsFromIR(
     }
   }
 
-  // Generate one file per function definition.
+  // Generate one file per function definition. Collect the relative module
+  // path of each so a barrel (index.ts) can re-export them all.
+  const modulePaths: string[] = [];
   for (const ir of functionIrFiles) {
     const func = ir.function;
     // Determine tag from IR definition (use tag field).
@@ -45,8 +47,13 @@ export function generateFunctionsFromIR(
     const outputPath = path.join(tagDir, `${func.name}.ts`);
     fs.writeFileSync(outputPath, content, "utf-8");
 
+    const relPath = `${tag.toLowerCase()}/${func.name}`;
+    modulePaths.push(relPath);
+
     console.log(`Generated TypeScript function: ${outputPath}`);
   }
+
+  return modulePaths;
 
   console.log(`Total functions generated: ${functionIrFiles.length}`);
 }

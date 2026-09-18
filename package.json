@@ -1,10 +1,31 @@
 {
   "name": "spacetraders-codegen",
   "version": "0.1.0",
-  "description": "Generate intermediate JSON files for SpaceTraders API code generation",
+  "description": "TypeScript code generator for the SpaceTraders API v2, emitting a fully typed client library.",
+  "license": "MIT",
+  "main": "dist/client/index.js",
+  "module": "dist/client/index.js",
+  "types": "dist/client/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/client/index.d.ts",
+      "import": "./dist/client/index.js",
+      "require": "./dist/client/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist/client",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "generate": "node dist/index.js",
+    "build:lib": "tsc -p tsconfig.lib.json",
+    "build:publish": "npm run build && npm run generate && npm run build:lib",
+    "prepare": "npm run build:publish",
+    "prepublishOnly": "npm run build:publish",
     "test": "jest",
     "test:watch": "jest -- Watch",
     "example:basic": "node -r ts-node/register examples/basic-example.ts"

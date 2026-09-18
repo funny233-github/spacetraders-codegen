@@ -5,9 +5,7 @@
  * interact with the SpaceTraders v2 API.
  */
 
-import { AgentTokenClient } from "../target/spacetraders-api/client";
-import { getMyAgent } from "../target/spacetraders-api/agents/getMyAgent";
-import { ApiError } from "../target/spacetraders-api/errors";
+import { AgentTokenClient, getMyAgent, ApiError } from "../target/spacetraders-api";
 
 /**
  * Example: Get agent details (no game state required)

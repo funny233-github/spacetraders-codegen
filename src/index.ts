@@ -4,6 +4,7 @@ import { mergeSpec } from "./mergeSpec";
 import { extractEndpoints } from "./extractEndpoint";
 import { generateTypesFromIR } from "./generateTypesFromIR";
 import { generateFunctionsFromIR } from "./generateFunctionsFromIR";
+import { generateBarrel } from "./generateBarrel";
 import { buildGlobalTypesIR } from "./generateGlobalTypesIR";
 import { buildFunctionIR } from "./generateFunctionIR";
 import { RawSchema } from "./convertSchemaToIrType";
@@ -93,9 +94,19 @@ function main() {
   generateTypesFromIR(path.join(irDir, "types-IR.json"), apiOutputDir);
 
   // Step 6: Generate TypeScript functions from IR (each file carries its local
-  // response type, so no class IR is needed for validation).
+  // response type, so no class IR is needed for validation). Collect the
+  // relative module path of each function so a barrel can re-export them.
   console.log("Generating TypeScript functions...");
-  generateFunctionsFromIR(functionIrFiles, apiOutputDir);
+  const functionModulePaths = generateFunctionsFromIR(
+    functionIrFiles,
+    apiOutputDir,
+  );
+
+  // Step 7: Generate the barrel (index.ts) that re-exports every shared module
+  // and every generated function, so consumers can import from the package
+  // root instead of deep, tag-specific paths.
+  console.log("Generating barrel index.ts...");
+  generateBarrel(functionModulePaths, apiOutputDir);
 
   console.log("✅ Generation complete!");
   console.log(`Output files:`);
