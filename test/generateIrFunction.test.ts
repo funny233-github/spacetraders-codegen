@@ -80,12 +80,14 @@ describe("generateIrFunction", () => {
         type: "string",
         required: true,
         comment: "The ship symbol",
+        in: "path",
       });
       expect(params[1]).toEqual({
         name: "detailLevel",
         type: "string",
         required: false,
         comment: "Detail level",
+        in: "query",
       });
     });
 
@@ -133,6 +135,70 @@ describe("generateIrFunction", () => {
 
       expect(params).toHaveLength(1);
       expect(params[0].type).toBe("ShipSymbol");
+    });
+
+    it("should record the OpenAPI `in` location on each parameter", () => {
+      const endpoint = createTestEndpoint({
+        endpointName: "get-ship",
+        path: "/my/ships/{shipSymbol}",
+        parameters: [
+          {
+            name: "shipSymbol",
+            in: "path",
+            required: true,
+            schema: { type: "string" },
+          },
+          {
+            name: "detailLevel",
+            in: "query",
+            required: false,
+            schema: { type: "string" },
+          },
+        ],
+        requestBodySchema: {
+          type: "object",
+          properties: { note: { type: "string" } },
+        },
+      });
+
+      const params = generateIrFunction(endpoint).functions[0].parameters;
+
+      expect(params.map((p) => [p.name, p.in])).toEqual([
+        ["shipSymbol", "path"],
+        ["detailLevel", "query"],
+        ["note", "body"],
+      ]);
+      const apiCall = generateIrFunction(endpoint).functions[0].body.apiCall;
+      expect(apiCall.params).toEqual({ shipSymbol: "shipSymbol" });
+      expect(apiCall.query).toEqual({ detailLevel: "detailLevel" });
+    });
+
+    it("should drop parameters whose location is not path/query", () => {
+      // A header parameter is not part of the URL and must not become a
+      // function argument nor leak into the request body.
+      const endpoint = createTestEndpoint({
+        endpointName: "get-ship",
+        path: "/my/ships/{shipSymbol}",
+        parameters: [
+          {
+            name: "shipSymbol",
+            in: "path",
+            required: true,
+            schema: { type: "string" },
+          },
+          {
+            name: "X-Trace",
+            in: "header",
+            required: false,
+            schema: { type: "string" },
+          },
+        ],
+      });
+
+      const func = generateIrFunction(endpoint).functions[0];
+      expect(func.parameters.map((p) => p.name)).toEqual(["shipSymbol"]);
+      expect(func.body.apiCall.params).toEqual({ shipSymbol: "shipSymbol" });
+      expect(func.body.apiCall.query).toEqual({});
     });
   });
 
@@ -346,12 +412,14 @@ describe("generateIrFunction", () => {
       const func = generateIrFunction(endpoint).functions[0];
 
       expect(func.parameters).toHaveLength(2);
+      expect(func.parameters[0].in).toBe("path");
       expect(func.parameters[1]).toEqual({
         name: "survey",
         fieldName: "survey",
         type: "Survey",
         required: true,
         comment: undefined,
+        in: "body",
       });
       expect(func.body.apiCall.body).toBe("requestBody");
       expect(func.body.apiCall.bodyKind).toBe("direct");
@@ -370,6 +438,7 @@ describe("generateIrFunction", () => {
       expect(func.parameters[0].name).toBe("body");
       expect(func.parameters[0].type).toBe("string");
       expect(func.parameters[0].required).toBe(true);
+      expect(func.parameters[0].in).toBe("body");
       expect(func.body.apiCall.bodyKind).toBe("direct");
     });
 
@@ -387,6 +456,7 @@ describe("generateIrFunction", () => {
 
       expect(func.parameters).toHaveLength(1);
       expect(func.parameters[0].name).toBe("symbol");
+      expect(func.parameters[0].in).toBe("body");
       expect(func.body.apiCall.bodyKind).toBeUndefined();
     });
 
@@ -451,10 +521,13 @@ describe("generateIrFunction", () => {
       expect(func.parameters[0].name).toBe("shipSymbol");
       expect(func.parameters[0].type).toBe("ShipSymbol");
       expect(func.parameters[0].required).toBe(true);
+      expect(func.parameters[0].in).toBe("path");
       expect(func.parameters[1].name).toBe("systemSymbol");
       expect(func.parameters[1].required).toBe(false);
+      expect(func.parameters[1].in).toBe("body");
       expect(func.parameters[2].name).toBe("waypointSymbol");
       expect(func.parameters[2].required).toBe(false);
+      expect(func.parameters[2].in).toBe("body");
 
       // Verify return type
       expect(func.returnType).toBe("NavigateShipResponse");

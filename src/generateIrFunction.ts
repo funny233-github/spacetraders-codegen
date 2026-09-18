@@ -11,6 +11,12 @@ export interface IrFunctionParameter {
   type: string;
   required: boolean;
   comment?: string;
+  // Where this parameter comes from in the OpenAPI operation. This is the
+  // source of truth for codegen: "path" params are substituted into the URL,
+  // "query" params go into the query string, and "body" params are assembled
+  // into the request body. Parameters with other OpenAPI locations
+  // (header/cookie) are not modeled at all.
+  in: "path" | "query" | "body";
   // Original OpenAPI body field name. Set when the variable name was renamed to
   // avoid a collision with a path/query param (e.g. body `shipSymbol` -> var
   // `shipSymbolBody`); the request body must still use this field name.
@@ -137,30 +143,30 @@ export function generateSingleFunction(endpoint: Endpoint): IrFunctionDefinition
   // Derive function name from operationId (camelCased) or endpointName.
   const functionName = getFunctionName(endpoint);
 
-  // Build function parameters from endpoint parameters (path/query)
-  const parameters: IrFunctionParameter[] = (endpoint.parameters || []).map(
-    (param) => ({
+  // Build function parameters from the operation's `parameters` array,
+  // recording each parameter's OpenAPI `in` location. A param is a query
+  // param when `in === "query"`; otherwise it is a path param if `in ===
+  // "path"` or its name is embedded in the path template. Params with other
+  // locations (header/cookie) are not modeled: they are not part of the URL
+  // and must never leak into the request body.
+  const parameters: IrFunctionParameter[] = [];
+  for (const param of endpoint.parameters || []) {
+    const isQuery = param.in === "query";
+    const isPath =
+      param.in === "path" || endpoint.path.includes(`{${param.name}}`);
+    if (!isQuery && !isPath) continue;
+    parameters.push({
       name: param.name,
       type: param.schema ? inferTypeFromSchema(param.schema) : "string",
       required: param.required ?? false,
       comment: withConstraintAnnotations(param.description, param.schema),
-    }),
-  );
-
-  // Extract path/query param names first so body fields can be renamed when
-  // they collide with one (e.g. body `shipSymbol` alongside path `shipSymbol`).
-  const pathQueryParamNames = new Set<string>();
-  if (endpoint.parameters) {
-    for (const param of endpoint.parameters) {
-      if (
-        param.in === "query" ||
-        param.in === "path" ||
-        endpoint.path.includes(`{${param.name}}`)
-      ) {
-        pathQueryParamNames.add(param.name);
-      }
-    }
+      in: isQuery ? "query" : "path",
+    });
   }
+
+  // Path/query param names, so body fields can be renamed when they collide
+  // with one (e.g. body `shipSymbol` alongside path `shipSymbol`).
+  const pathQueryParamNames = new Set(parameters.map((p) => p.name));
 
   // Append request-body properties as parameters. The OpenAPI `parameters`
   // array only lists path/query params, so body fields would otherwise be
@@ -182,21 +188,16 @@ export function generateSingleFunction(endpoint: Endpoint): IrFunctionDefinition
     a.required === b.required ? 0 : a.required ? -1 : 1,
   );
 
-  // Extract path parameters from endpoint (those used in URL paths)
+  // Path/query maps for the API call, derived from the parameters' `in`
+  // (the single source of truth). Query params must be threaded into the
+  // request, otherwise list endpoints ignore them.
   const pathParams: Record<string, string> = {};
-  // Extract query parameters (in === 'query'). These become function params and
-  // must be threaded into the request, otherwise list endpoints ignore them.
   const queryParams: Record<string, string> = {};
-  if (endpoint.parameters) {
-    for (const param of endpoint.parameters) {
-      if (param.in === "query") {
-        queryParams[param.name] = param.name;
-      } else if (
-        param.in === "path" ||
-        endpoint.path.includes(`{${param.name}}`)
-      ) {
-        pathParams[param.name] = param.name;
-      }
+  for (const p of parameters) {
+    if (p.in === "query") {
+      queryParams[p.name] = p.name;
+    } else if (p.in === "path") {
+      pathParams[p.name] = p.name;
     }
   }
 
@@ -324,6 +325,7 @@ function inferRequestBodyParameters(
       type: inferBodyFieldType(fieldSchema),
       required: requiredSet.has(fieldName),
       comment: withConstraintAnnotations(prop.description, fieldSchema),
+      in: "body",
     };
   });
 }
@@ -366,6 +368,7 @@ function inferDirectBodyParameter(
       type: typeName,
       required: true,
       comment: withConstraintAnnotations(description, s),
+      in: "body",
     };
   }
 
@@ -380,6 +383,7 @@ function inferDirectBodyParameter(
       type: inferTypeFromSchema(s),
       required: true,
       comment: withConstraintAnnotations(description, s),
+      in: "body",
     };
   }
 
