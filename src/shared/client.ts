@@ -145,19 +145,24 @@ export class HttpClient {
       await this.respectRateLimit();
       const url = this.buildUrl(options.path, options.params, options.query);
       const method = options.method ?? "POST";
-      const init: RequestInit = {
-        method,
-        headers: {
-          "Content-Type": "application/json",
-          "User-Agent": "spacetraders-api-demo/0.1.0",
-          Authorization: `Bearer ${this.token}`,
-          ...this.extraHeaders,
-        },
+      const headers: Record<string, string> = {
+        "User-Agent": "spacetraders-api-demo/0.1.0",
+        Authorization: `Bearer ${this.token}`,
+        ...this.extraHeaders,
       };
+      const init: RequestInit = { method, headers };
+      // Declare a JSON content type only when a body is actually sent. An
+      // endpoint that takes no body (e.g. orbit/dock/scan, or any GET) must
+      // send neither: a `Content-Type: application/json` header with an empty
+      // body is rejected by the API with HTTP 422. An explicit Content-Type
+      // supplied via `config.headers` is left untouched.
       if (options.body !== undefined && options.body !== null) {
+        const hasContentType = Object.keys(headers).some(
+          (h) => h.toLowerCase() === "content-type",
+        );
+        if (!hasContentType) headers["Content-Type"] = "application/json";
         init.body = JSON.stringify(options.body) as string;
       }
-      // Note: For GET requests, body is undefined - the API may reject a body
 
       let res: Response;
       try {
